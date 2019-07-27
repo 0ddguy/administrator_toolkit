@@ -5,22 +5,22 @@ $ver = '1.0'
 Write-Host "== Administration Tools - Ver $ver =="
 Write-Host "By Jared Freed - 07/27/19/"
 function Push_Console {
-   do {
-    Write-Host "$(hostname)/$(whoami)>" -NoNewLine
-    $input = Parse
-    $count = $input.Count
-    Write-Host "Number of params in input is $count"   
+    do {
+        Write-Host "$(hostname)/$(whoami)>" -NoNewLine
+        $input = Parse
         if($input[0] -eq 'unlock') {
             try {
-                $EID = $input[1] 
-                Unlock -EID $EID
+            $EID = $input[1] 
+            Unlock -EID $EID
             } catch [System.Exception] {Write-Host "Invalid parameters, please try again"}
         } elseif($input[0] -eq 'reset') {
             try {
-                $EID = $input[1]
-                $pass = $input[2]
-                Reset -EID $EID -pass $pass
+            $EID = $input[1]
+            $pass = $input[2]
+            Reset -EID $EID -pass $pass
             } catch [System.Exception] {Write-Host "Invalid parameters, please try again"}
+        } elseif($input[0] -eq 'key'){
+            Get_Key
         } elseif($input[0] -eq 'help') {
             ShowHelp
         } elseif($input[0] -eq 'clear') {try{Clear-Host}catch{[System.Exception] {Write-Host "Invalid parameters, please try again"}}
@@ -28,7 +28,7 @@ function Push_Console {
             Write-Host "Invalid command"
             ShowHelp
         }
-   } until ($input[0] -eq 'quit')
+    } until ($input[0] -eq 'quit')
 }
 
 function Parse {
@@ -60,11 +60,11 @@ function Reset {
     Write-Host "Reset got ID $EID"
     Write-Host "Reset got $pass"
 
-        if($pass -eq '') {
-            Write-Host "No password supplied"
-        } else {
-            Write-Host "Password is $pass"
-        }
+    if($pass -eq '') {
+        Write-Host "No password supplied"
+    } else {
+        Write-Host "Password is $pass"
+    }
 }
 function ShowHelp {
 
@@ -74,6 +74,7 @@ function ShowHelp {
     Write-Host "Optional params: -c (Check if account is locked)"
     Write-Host "reset <employee ID> <password> <param> - Resets password to specified value, if no password is provided defaults to Maximus1"
     Write-Host "Optional params: -u (Call upon the Unlock function to unlock account aswell"
+    Write-Host ''
 }
 
 Push_Console
