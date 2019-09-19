@@ -4,36 +4,53 @@ using namespace Systems.Collections.Generic
 
 function main
 {
-
     $parser = [ArgumentParser]::new()
-    $namespace = $parser.get_str()
-    $namespace
+    $parser.add_positional_argument('arg')
+    $parser.add_positional_argument('arg2')
+    $parser.add_positional_argument('arg3')
+    $parser.add_optional_argument('-a')
+    $parser.add_optional_argument('-b')
+    write-host $parser.positional_argvs 
+    write-host $parser.optional_argvs
     # do
     # {
     #     Write-Host "$(echo %cd%)>" -NoNewLine -ForegroundColor DarkCyan
-        
+    #
     # } while($input -ne 'quit' -or $input -ne 'q')
 }
 
-class ArgumentParser
+class _ArgumentContainer
 {
-    [string]$stream
+    [string]$argument_string
+    [string]$prefix
+    [actions]$action_container
     [hashtable]$namespace
-    [Collections.ArrayList]$argvs
+    [Collections.ArrayList]$positional_argvs = @()
+    [Collections.ArrayList]$optional_argvs = @()
+}
 
-    [string]get_str() 
+class ArgumentParser : _ArgumentContainer
+{
+
+    [string]parse_arguments() 
     {
-        $h = Get-Host
-        $this.stream = $h.UI.ReadLine()
-        return $this.stream
+        $h = get-host
+        $this.argument_string = $h.UI.ReadLine()
+        return $this.argument_string
     }
+}
 
-    [Collections.ArrayList]add_argument([string]$arg, [string]$action, [bool]$mandatory)
-    {
-        $this.argvs = 
-        return $this.argvs
-    }
+class Actions : _ArgumentContainer
+{
+    [string]$dest
+    [string]$type
+}
 
+class DestAction : Action
+{
+    
 }
 
 main
+
+
