@@ -5,13 +5,10 @@ using namespace Systems.Collections.Generic
 function main
 {
     $parser = [ArgumentParser]::new()
-    $parser.add_positional_argument('arg')
-    $parser.add_positional_argument('arg2')
-    $parser.add_positional_argument('arg3')
-    $parser.add_optional_argument('-a')
-    $parser.add_optional_argument('-b')
-    write-host $parser.positional_argvs 
-    write-host $parser.optional_argvs
+    $parser.add_argument('-a')
+    $parser.add_argument('--argument')
+    write-host $parser.arg_lst
+    # Write-Host $parser.argument_string
     # do
     # {
     #     Write-Host "$(echo %cd%)>" -NoNewLine -ForegroundColor DarkCyan
@@ -19,37 +16,57 @@ function main
     # } while($input -ne 'quit' -or $input -ne 'q')
 }
 
-class _ArgumentContainer
+class ArgumentContainer
 {
-    [string]$argument_string
+    [System.Collections.ArrayList]$arg_lst
+    [string]$arg_str
     [string]$prefix
-    [actions]$action_container
-    [hashtable]$namespace
-    [Collections.ArrayList]$positional_argvs = @()
-    [Collections.ArrayList]$optional_argvs = @()
+    [System.Collections.ArrayList]$args_to_parse = @()
+    [System.Collections.ArrayList]$largs_to_parse = @()
+    [hashtable]$namespace = @{}
 }
 
-class ArgumentParser : _ArgumentContainer
+class ArgumentParser
 {
 
-    [string]parse_arguments() 
+    [ArgumentContainer]$container
+
+    # Match any string that begins with a - characters followed by any number of characters
+    [string]$RX_ARG = "^-{1}[a-zA-Z0-9]+"
+    [string]$RX_LARG = "^-{2}"
+
+    [void]add_argument([string]$arg)
+    {
+        write-host $arg
+        if($arg -match $this.RX_ARG)
+        {
+            write-host $arg
+            write-host $this.container.args_to_parse.GetType()
+            $this.container.args_to_parse.add($arg)
+        }
+        elseif($arg -match $this.RX_LARG)
+        {
+            write-host $arg
+            $this.container.args_to_parse.add($arg)
+        }
+    }
+
+    [string]get_arg_string() 
     {
         $h = get-host
-        $this.argument_string = $h.UI.ReadLine()
-        return $this.argument_string
+        $this.arg_str = $h.UI.readline()
+        return $this.container.arg_str
     }
+
+    [System.Collections.ArrayList]parse_str_args()
+    {
+
+        return $Null
+    }
+
+
 }
 
-class Actions : _ArgumentContainer
-{
-    [string]$dest
-    [string]$type
-}
-
-class DestAction : Action
-{
-    
-}
 
 main
 
