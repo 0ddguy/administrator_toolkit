@@ -2,13 +2,20 @@ using namespace System;
 using namespace Systems.Collections.Generic
 # import-module activedirectory
 $PSver = $PSversiontable.PSversion
-$dom = get-addomain -current localcomputer
+$ver = '2.0'
+# $dom = get-addomain -current localcomputer
+# load startup art
 
 class DomainHandler
 {
-    [void]check([string]$filter, [string]$id)
+    [void]search([int]$filter, [string]$crit)
     {
+        write-host $filter $crit
+    }
 
+    [void]unlock([int]$filter, [string]$crit)
+    {
+        write-host $filter $crit
     }
 }
 
@@ -32,7 +39,6 @@ class ArgumentParser : ArgumentContainer
     [string]$RX_QUOTE = "([^""]*)"
     # bad characters not to be used in args
     [string]$RX_BAD_CHARS = "[\*\?\]\[\^\+\`\!\@\#\$\%\&]"
-
 
     [void]parse_args()
     {
@@ -66,7 +72,7 @@ class ArgumentParser : ArgumentContainer
                 # detect if argument contains a string value surrounded by quotations
                 if($this.arg_lst[$p1 + 1].startswith('"'))
                 {
-                    # set p1 to p2
+                    # set p2 to p1
                     $p2 = $p1
 
                     # increment p2 until the other quote is found
@@ -88,6 +94,7 @@ class ArgumentParser : ArgumentContainer
                     $this.namespace[$v] = $this.arg_lst[$p1 + 1]
                 }
             }
+
             $p1++
         }
     }
@@ -102,14 +109,53 @@ class ArgumentParser : ArgumentContainer
 
 }
 
+# startup art and information
+function startup
+{
+    $art_source = join-path -path "$PSScriptRoot" -childpath "startup"
+    $art_count = (dir $art_source | measure).count
+    $n = get-random -maximum $art_count
+    $get_art = join-path -path $art_source -childpath $n
+    get-content -raw $get_art | write-host
+    write-host "by Jared Freed | GNU General Public License | ver $ver"
+    write-host "Host: " -nonewline -foregroundcolor darkyellow; write-host "$(hostname)"
+    if($dom -eq $null){write-host "Domain: " -foregroundcolor darkyellow -nonewline; write-host "No domain detected"}
+    else{write-host "Domain: $dom" -foregroundcolor darkyellow}
+    write-host "PS version: $PSver" -foregroundcolor darkblue
+    write-host "Enter " -nonewline; write-host "help " -nonewline -foregroundcolor darkgreen; write-host 'for usage'
+}
+
 function main
 {
     $parser = [ArgumentParser]::new()
+    $handler = [DomainHandler]::new()
+    startup
+
     do
     {
-    write-host "tkconsole>" -nonewline
-    $parser.parse_args()
-    write-host $parser.namespace.item('-a')
+        write-host "$(whoami)@tkc>" -nonewline
+        $parser.parse_args()
+        if($parser.namespace.mode -eq 'search')
+        {
+            $handler.search($parser.namespace.item('-f'), $parser.namespace.item('-i'))
+        }
+        elseif($parser.namespace.mode -eq 'unlock')
+        {
+
+        }
+        elseif($parser.namespace.mode -eq 'modify')
+        {
+
+        }
+        elseif($parser.namespace.mode -eq 'list')
+        {
+
+        }
+        elseif($parser.namespace.mode -eq 'add')
+        {
+
+        }
+        elseif($parser.namespace.mode -eq 'clear'){clear-host}
     } until ($parser.namespace.mode -eq 'quit')
 }
 
