@@ -1,22 +1,43 @@
 using namespace System;
 using namespace Systems.Collections.Generic
-# import-module activedirectory
+import-module activedirectory
 $PSver = $PSversiontable.PSversion
 $ver = '2.0'
-# $dom = get-addomain -current localcomputer
-# load startup art
+$dom = get-addomain -current localcomputer
+$dom_forest = $dom.forest
 
 class DomainHandler
 {
-    [void]search([int]$filter, [string]$crit)
+
+    [PScustomobject]$query
+    
+
+    [hashtable]$filters = @{
+        1 = 'Name';
+        2 = 'EmployeeID';
+        3 = 'ComputerName';
+        4 = 'IPv4Address'
+    }
+
+    [void]display()
     {
-        write-host $filter $crit
+        write-host $this.query.lockedout
+    }
+
+    [void]search([int]$filter_key, [string]$crit)
+    {
+        $filter = $this.filters[$filter_key]
+        # if($filter -eq 1 -or $filter -eq 2)
+        $this.query = get-aduser -filter "$filter -eq $crit" -properties name, employeeid, lockedout, manager
+        $this.display()
+        # get-adobject -filter "$filter -eq $crit" -properties name, employeeid | out-host
     }
 
     [void]unlock([int]$filter, [string]$crit)
     {
         write-host $filter $crit
     }
+
 }
 
 # Contains lists and actions used in ArgumentParser
@@ -39,9 +60,14 @@ class ArgumentParser : ArgumentContainer
     [string]$RX_QUOTE = "([^""]*)"
     # bad characters not to be used in args
     [string]$RX_BAD_CHARS = "[\*\?\]\[\^\+\`\!\@\#\$\%\&]"
+    # check for comma separated values
+    [string]$RX_COMMAS = "(,[\w]+)|([\w]+,)"
 
     [void]parse_args()
     {
+        # clear namespace at beginning of invocation
+        $this.namespace.clear()
+
         $this.arg_str = $this.get_arg_str()
         $this.arg_lst = $this.arg_str.split(' ')
 
@@ -87,6 +113,16 @@ class ArgumentParser : ArgumentContainer
                     # set p1 back
                     $p1 -= 1
                 }
+                
+                elseif($this.arg_lst[$p1 + 1].contains(','))
+                {
+                    $p2 = $p1
+
+                    [array]$sep_args = $this.arg_lst[$p1 + 1].split(',')
+                    $p1 += 1
+                    $this.namespace[$v] = $sep_args
+                    $p1 -= 1
+                }
 
                 else
                 {
@@ -96,7 +132,9 @@ class ArgumentParser : ArgumentContainer
             }
 
             $p1++
+ 
         }
+
     }
 
     # get input from user
@@ -113,15 +151,15 @@ class ArgumentParser : ArgumentContainer
 function startup
 {
     $art_source = join-path -path "$PSScriptRoot" -childpath "startup"
-    $art_count = (dir $art_source | measure).count
+    $art_count = (get-childitem $art_source | measure-object).count
     $n = get-random -maximum $art_count
     $get_art = join-path -path $art_source -childpath $n
     get-content -raw $get_art | write-host
     write-host "by Jared Freed | GNU General Public License | ver $ver"
-    write-host "Host: " -nonewline -foregroundcolor darkyellow; write-host "$(hostname)"
-    if($dom -eq $null){write-host "Domain: " -foregroundcolor darkyellow -nonewline; write-host "No domain detected"}
-    else{write-host "Domain: $dom" -foregroundcolor darkyellow}
-    write-host "PS version: $PSver" -foregroundcolor darkblue
+    write-host "Host: " -nonewline; write-host "$(hostname)" -foregroundcolor darkyellow
+    if($dom -eq $null){write-host "Domain: " -nonewline; write-host "No domain detected" -foregroundcolor darkyellow}
+    else{write-host "Domain: " -nonewline; write-host $dom_forest -foregroundcolor darkgreen}
+    write-host "PS version: " -nonewline; write-host $PSver -foregroundcolor blue
     write-host "Enter " -nonewline; write-host "help " -nonewline -foregroundcolor darkgreen; write-host 'for usage'
 }
 
@@ -156,6 +194,7 @@ function main
 
         }
         elseif($parser.namespace.mode -eq 'clear'){clear-host}
+
     } until ($parser.namespace.mode -eq 'quit')
 }
 
