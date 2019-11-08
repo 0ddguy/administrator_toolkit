@@ -9,14 +9,17 @@ $dom_forest = $dom.forest
 class DomainHandler
 {
 
-    # Grab strings starting with DC= and ending in =
+    
+    # Grab strings for memberof display
     [string]$RX_CN = "N=(.*)"
     [PScustomobject]$query
-    
+    [bool]$verbose
+
     [hashtable]$filters = @{
         1 = 'Name';
         2 = 'EmployeeID';
-        3 = 'IPv4Address'
+        3 = 'ComputerName';
+        4 = 'IPv4Address';
     }
 
     $query_user = [ordered]@{
@@ -28,7 +31,7 @@ class DomainHandler
         'department' = 'Department:';
         'lastlogondate' = 'Last logged in:';
         'manager' = 'Supervisor:';
-        'memberof' = 'Member of:'
+        'memberof' = 'Member of:';
     }
 
     $query_computer = [ordered]@{
@@ -36,13 +39,13 @@ class DomainHandler
         'description' = 'Description:';
         'ipv4address' = 'IPv4:';
         'operatingsystem' = 'OS:';
-        'operatingsystemversion' = 'OS ver:'
-        'dnshostname' = 'DNS hostname:'
-        'enabled' = 'Object enabled:'
-        'canonicalname' = 'CN:'
+        'operatingsystemversion' = 'OS ver:';
+        'dnshostname' = 'DNS hostname:';
+        'enabled' = 'Object enabled:';
+        'canonicalname' = 'CN:';
     }
 
-    [void]search([int]$filter_key, [string]$crit)
+    [void]search([int]$filter_key, [string]$crit, [bool]$verbose)
     {
         $filter = $this.filters[$filter_key]
         if($filter_key -eq 1 -or $filter_key -eq 2)
@@ -80,17 +83,17 @@ class DomainHandler
                 if($i -eq 'manager')
                 {
                     $fi = $this.format_member($this.query.$i)
-                    write-host $this.query_user[$i] $fi[0]
+                    write-host $this.query_user[$i] -nonewline -foregroundcolor gray;write-host $fi[0]
                 }
-                elseif($i -eq 'memberof')
+                elseif($i -eq 'memberof' -and $this.verbose -eq $true)
                 {
                     $fi = $this.format_member($this.query.$i)
-                    write-host $this.query_user[$i]
+                    write-host $this.query_user[$i] -foregroundcolor blue
                     foreach($member in $fi){write-host $member}
                 }
                 else
                 {
-                    write-host $this.query_user[$i] $this.query.$i
+                    write-host $this.query_user[$i] -nonewline -foregroundcolor darkyellow;write-host $this.query.$i
                 }
             }
         }
@@ -176,16 +179,20 @@ class ArgumentParser : ArgumentContainer
                     $p1 -= 1
                 }
                 
+                # check for comma separated values
                 elseif($this.arg_lst[$p1 + 1].contains(','))
                 {
                     $p2 = $p1
-
-                    [array]$sep_args = $this.arg_lst[$p1 + 1].split(',')
                     $p1 += 1
-                    $this.namespace[$v] = $sep_args
+                    $this.namespace[$v] = $this.arg_lst[$p1 + 1].split(',')
                     $p1 -= 1
                 }
 
+                # assign true if value is empty
+                elseif($this.arg_lst[$p1 + 1].startswith('-') -or $this.arg_lst[$p1 + 1] -eq $null)
+                {
+                    $this.namespace[$v] = $true
+                }
                 else
                 {
                     # assign value to namespace
@@ -237,7 +244,7 @@ function main
         $parser.parse_args()
         if($parser.namespace.mode -eq 'search')
         {
-            $handler.search($parser.namespace.item('-f'), $parser.namespace.item('-i'))
+            $handler.search($parser.namespace.item('-f'), $parser.namespace.item('-q'), $parser.namespace.item('-v'))
             $handler.display_query()
         }
         elseif($parser.namespace.mode -eq 'unlock')
