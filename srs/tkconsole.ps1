@@ -1,6 +1,7 @@
 using namespace System;
 using namespace Systems.Collections.Generic
 import-module activedirectory
+set-alias -name print -value write-host
 $PSver = $PSversiontable.PSversion
 $ver = '2.0'
 $dom = get-addomain -current localcomputer
@@ -19,12 +20,13 @@ class DomainHandler
     [hashtable]$filters = @{
         1 = 'Name';
         2 = 'EmployeeID';
-        3 = 'ComputerName';
+        3 = 'Name';
         4 = 'IPv4Address';
+        5 = 'LoggedOn'
     }
 
     # ordered dictionaries used in displaying queries
-    $query_user = [ordered]@{
+    $user_props = [ordered]@{
         'name' = 'Name: ';
         'employeeid' = 'Employee ID: ';
         'title' = 'Title: ';
@@ -33,11 +35,11 @@ class DomainHandler
         'manager' = 'Supervisor: ';
         'department' = 'Department: ';
         'lastlogondate' = 'Last logged in: ';
-        'memberof' = 'Member of: ';
+        'memberof' = '[VERBOSE] Member of: ';
     }
 
-    $query_computer = [ordered]@{
-        'displayname' = 'Display name: ';
+    $computer_props = [ordered]@{
+        'samaccountname' = 'Display name: ';
         'description' = 'Description: ';
         'ipv4address' = 'IPv4: ';
         'operatingsystem' = 'OS: ';
@@ -56,11 +58,16 @@ class DomainHandler
         {
             $this.query = get-aduser -filter "$filter -eq $query" -properties name, employeeid, lockedout, manager, lastlogondate, title, emailaddress, department, memberof, objectclass
         }
+        elseif($filter_key -eq 3 -or $filter_key -eq 4)
+        {
+            $this.query = get-adcomputer -filter "$filter -eq '$query'" -properties samaccountname, description, ipv4address, operatingsystem, operatingsystemversion, dnshostname, enabled, canonicalname, objectclass
+        }
+
     }
 
     [void]unlock([int]$filter, [string]$crit)
     {
-        write-host $filter $crit
+        print $filter $crit
     }
 
     # return arraylist containing all members of a provided member
@@ -79,19 +86,44 @@ class DomainHandler
         return $formatted_member
     }
 
+    # [void]get_comp_user([string]$user)
+    # {
+    #     $ping = new-object System.Net.NetworkInformation.Ping
+    #     $comp_lst = get-adcomputer -filter "enabled -eq True"
+    #     print $comp_lst
+    #     foreach($comp in $comp_lst)
+    #     {
+    #         $reply = $null
+    #         $reply = $ping.send($comp)
+    #         if($reply.status -like 'Success')
+    #         {
+    #             $exp_proc = gwmi win32_process -computer $comp -filter "Name = 'explorer.exe'"
+    #             foreach($p in $exp_proc)
+    #             {
+    #                 print $p 
+    #                 $t = ($p.getowner()).user
+    #                 if($t -eq $user)
+    #                 {
+    #                     print $user": "$comp
+    #                 }
+    #             }
+    #         }
+    #     }
+    # }
+
     # display stored query
     [void]display_query()
     {
-        write-host "| Query results |" -foregroundcolor darkcyan
+        print "| Query results |" -foregroundcolor darkcyan
         if($this.query.objectclass -eq 'user')
         {
-            foreach ($i in $this.query_user.keys)
+            foreach ($i in $this.user_props.keys)
             {
                 # call upon format_member to format supervisor output
                 if($i -eq 'manager')
                 {
                     $fi = $this.format_member($this.query.$i)
-                    write-host $this.query_user[$i] -nonewline -foregroundcolor darkyellow;write-host $fi[0]
+                    print $this.user_props[$i] -nonewline -foregroundcolor darkyellow;print $fi[0]
                 }
                 # call upon format_member to format security groups
                 elseif($i -eq 'memberof')
@@ -99,26 +131,32 @@ class DomainHandler
                     if($this.verbose)
                     {
                         $fi = $this.format_member($this.query.$i)
-                        write-host $this.query_user[$i] -foregroundcolor blue
-                        foreach($member in $fi){write-host $member}
+                        print $this.user_props[$i] -foregroundcolor blue
+                        foreach($member in $fi){print $member}
                     }
                 }
 
                 elseif($i -eq 'lockedout')
                 {
                    if($this.query.$i -eq $true){$c='darkred';$s='Locked'}else{$c='darkgreen';$s='Unlocked'}
-                   write-host $this.query_user[$i] -nonewline -foregroundcolor darkyellow; write-host $s -foregroundcolor $c
+                   print $this.user_props[$i] -nonewline -foregroundcolor darkyellow; print $s -foregroundcolor $c
                 }
 
-                else
-                {
-                    write-host $this.query_user[$i] -nonewline -foregroundcolor darkyellow;write-host $this.query.$i
-                }
+                else {print $this.user_props[$i] -nonewline -foregroundcolor darkyellow;print $this.query.$i}
             }
         }
         elseif($this.query.objectclass -eq 'computer')
         {
+            foreach($i in $this.computer_props.keys)
+            {
+                print $this.computer_props[$i] -nonewline -foregroundcolor darkyellow;print $this.query.$i
+            }
 
+            if($this.verbose)
+            {
+                $gwmi = gwmi -class win32_computersystem -computername $this.query.samaccountname.replace("$","") | select-object username
+                print "[VERBOSE] Logged in user: " -nonewline -foregroundcolor blue;print $gwmi.username
+            }
         }
     }
 }
@@ -248,13 +286,13 @@ function startup
     $art_count = (get-childitem $art_source | measure-object).count
     $n = get-random -maximum $art_count
     $get_art = join-path -path $art_source -childpath $n
-    get-content -raw $get_art | write-host
-    write-host "by Jared Freed | GNU General Public License | ver $ver"
-    write-host "Host: " -nonewline; write-host "$(hostname)" -foregroundcolor darkyellow
-    if($null -eq $dom){write-host "Domain: " -nonewline; write-host "No domain detected" -foregroundcolor darkyellow}
-    else{write-host "Domain: " -nonewline; write-host $dom_forest -foregroundcolor darkgreen}
-    write-host "PS version: " -nonewline; write-host $PSver -foregroundcolor blue
-    write-host "Enter " -nonewline; write-host "help " -nonewline -foregroundcolor darkgreen; write-host 'for usage'
+    get-content -raw $get_art | print
+    print "by Jared Freed | GNU General Public License | ver $ver"
+    print "Host: " -nonewline; print "$(hostname)" -foregroundcolor darkyellow
+    if($null -eq $dom){print "Domain: " -nonewline; print "No domain detected" -foregroundcolor darkyellow}
+    else{print "Domain: " -nonewline; print $dom_forest -foregroundcolor darkgreen}
+    print "PS version: " -nonewline; print $PSver -foregroundcolor blue
+    print "Enter " -nonewline; print "help " -nonewline -foregroundcolor darkgreen; print 'for usage'
 }
 
 function main
@@ -265,7 +303,7 @@ function main
 
     do
     {
-        write-host "$(whoami)@tkc2>" -nonewline
+        print "$(whoami)@tkc2>" -nonewline
         $parser.parse_args()
         if($parser.namespace.mode -eq 'search')
         {
