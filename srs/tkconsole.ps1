@@ -13,8 +13,9 @@ class DomainHandler
     # Grab strings for memberof display
     [string]$RX_CN = "N=(.*)"
     [PScustomobject]$query
-    [bool]$verbose
+    [bool]$verbose = $false
 
+    # filters to be used by ad searches
     [hashtable]$filters = @{
         1 = 'Name';
         2 = 'EmployeeID';
@@ -22,35 +23,38 @@ class DomainHandler
         4 = 'IPv4Address';
     }
 
+    # ordered dictionaries used in displaying queries
     $query_user = [ordered]@{
-        'name' = 'Name:';
-        'employeeid' = 'Employee ID:';
-        'title' = 'Title:';
-        'lockedout' = 'Locked:';
-        'emailaddress' = 'Email address:';
-        'department' = 'Department:';
-        'lastlogondate' = 'Last logged in:';
-        'manager' = 'Supervisor:';
-        'memberof' = 'Member of:';
+        'name' = 'Name: ';
+        'employeeid' = 'Employee ID: ';
+        'title' = 'Title: ';
+        'lockedout' = 'Lock status: ';
+        'emailaddress' = 'Email address: ';
+        'manager' = 'Supervisor: ';
+        'department' = 'Department: ';
+        'lastlogondate' = 'Last logged in: ';
+        'memberof' = 'Member of: ';
     }
 
     $query_computer = [ordered]@{
-        'displayname' = 'Display name:';
-        'description' = 'Description:';
-        'ipv4address' = 'IPv4:';
-        'operatingsystem' = 'OS:';
-        'operatingsystemversion' = 'OS ver:';
-        'dnshostname' = 'DNS hostname:';
-        'enabled' = 'Object enabled:';
-        'canonicalname' = 'CN:';
+        'displayname' = 'Display name: ';
+        'description' = 'Description: ';
+        'ipv4address' = 'IPv4: ';
+        'operatingsystem' = 'OS: ';
+        'operatingsystemversion' = 'OS ver: ';
+        'dnshostname' = 'DNS hostname: ';
+        'enabled' = 'Object enabled: ';
+        'canonicalname' = 'CN: ';
     }
 
-    [void]search([int]$filter_key, [string]$crit, [bool]$verbose)
+    # call get-aduser cmdlet with provided parameters
+    [void]search([int]$filter_key, [string]$query, [bool]$verbose)
     {
+        $this.verbose = $verbose
         $filter = $this.filters[$filter_key]
         if($filter_key -eq 1 -or $filter_key -eq 2)
         {
-            $this.query = get-aduser -filter "$filter -eq $crit" -properties name, employeeid, lockedout, manager, lastlogondate, title, emailaddress, department, memberof, objectclass
+            $this.query = get-aduser -filter "$filter -eq $query" -properties name, employeeid, lockedout, manager, lastlogondate, title, emailaddress, department, memberof, objectclass
         }
     }
 
@@ -59,38 +63,53 @@ class DomainHandler
         write-host $filter $crit
     }
 
+    # return arraylist containing all members of a provided member
     [System.Collections.ArrayList]format_member([string]$member)
     {
         [System.Collections.ArrayList]$formatted_member = @()
-
+        
         foreach($member in $member.split(','))
         {
             if($member -match $this.RX_CN)
             {
                 $member -match $this.RX_CN
-                $formatted_member.add($matches[0])
+                $formatted_member.add($matches[0].replace('N=',''))
             }
         }
         return $formatted_member
     }
 
+    # display stored query
     [void]display_query()
     {
+        write-host "| Query results |" -foregroundcolor darkcyan
         if($this.query.objectclass -eq 'user')
         {
             foreach ($i in $this.query_user.keys)
             {
+                # call upon format_member to format supervisor output
                 if($i -eq 'manager')
                 {
                     $fi = $this.format_member($this.query.$i)
-                    write-host $this.query_user[$i] -nonewline -foregroundcolor gray;write-host $fi[0]
+                    write-host $this.query_user[$i] -nonewline -foregroundcolor darkyellow;write-host $fi[0]
                 }
-                elseif($i -eq 'memberof' -and $this.verbose -eq $true)
+                # call upon format_member to format security groups
+                elseif($i -eq 'memberof')
                 {
-                    $fi = $this.format_member($this.query.$i)
-                    write-host $this.query_user[$i] -foregroundcolor blue
-                    foreach($member in $fi){write-host $member}
+                    if($this.verbose)
+                    {
+                        $fi = $this.format_member($this.query.$i)
+                        write-host $this.query_user[$i] -foregroundcolor blue
+                        foreach($member in $fi){write-host $member}
+                    }
                 }
+
+                elseif($i -eq 'lockedout')
+                {
+                   if($this.query.$i -eq $true){$c='darkred';$s='Locked'}else{$c='darkgreen';$s='Unlocked'}
+                   write-host $this.query_user[$i] -nonewline -foregroundcolor darkyellow; write-host $s -foregroundcolor $c
+                }
+
                 else
                 {
                     write-host $this.query_user[$i] -nonewline -foregroundcolor darkyellow;write-host $this.query.$i
@@ -109,7 +128,6 @@ class DomainHandler
 class ArgumentContainer
 {
     [System.Collections.ArrayList]$arg_lst
-    [System.Collections.ArrayList]$arg_lst_to_consume
     [string]$arg_str
     [hashtable]$namespace = @{}
 }
@@ -160,6 +178,18 @@ class ArgumentParser : ArgumentContainer
             # match arguments to values and add to namespace
             if($v -match $this.RX_OPT_ARG -or $v -match $this.RX_OPT_LARG)
             {
+                # detect empty value and assign true
+                if($this.arg_lst[$p1 + 1] -match $this.RX_OPT_ARG)
+                {
+                    $this.namespace[$v] = $true
+                }
+                
+                # detect empty value and assign true
+                if($this.arg_lst[$p1 + 1] -eq $null)
+                {
+                    $this.namespace[$v] = $true
+                    continue
+                }
                 # detect if argument contains a string value surrounded by quotations
                 if($this.arg_lst[$p1 + 1].startswith('"'))
                 {
@@ -188,11 +218,6 @@ class ArgumentParser : ArgumentContainer
                     $p1 -= 1
                 }
 
-                # assign true if value is empty
-                elseif($this.arg_lst[$p1 + 1].startswith('-') -or $this.arg_lst[$p1 + 1] -eq $null)
-                {
-                    $this.namespace[$v] = $true
-                }
                 else
                 {
                     # assign value to namespace
