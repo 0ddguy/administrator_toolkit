@@ -9,9 +9,8 @@ $dom_forest = $dom.forest
 class DomainHandler
 {
 
-    # Grab strings starting with = and ending in ,
-    [string]$RX_DC_NAME = "\CN=(.*?)\,"
-
+    # Grab strings starting with DC= and ending in =
+    [string]$RX_CN = "N=(.*)"
     [PScustomobject]$query
     
     [hashtable]$filters = @{
@@ -60,13 +59,13 @@ class DomainHandler
     [System.Collections.ArrayList]format_member([string]$member)
     {
         [System.Collections.ArrayList]$formatted_member = @()
-        $member_arr = $member.split(',')
-        foreach($member in $member_arr)
+
+        foreach($member in $member.split(','))
         {
-            if($member.startswith("CN=") -or $member.startswith("DC=MAXIMUS CN="))
+            if($member -match $this.RX_CN)
             {
-                $member = $member.replace("DC=MAXIMUS CN=",''); $member = $member.replace("CN=",'')
-                $formatted_member.add($member)
+                $member -match $this.RX_CN
+                $formatted_member.add($matches[0])
             }
         }
         return $formatted_member
