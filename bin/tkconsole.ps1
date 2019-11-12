@@ -1,5 +1,6 @@
 using namespace System;
 using namespace Systems.Collections.Generic
+using namespace System.Runtime.InteropServices
 import-module activedirectory
 set-alias -name print -value write-host
 $PSver = $PSversiontable.PSversion
@@ -8,9 +9,7 @@ $dom = get-addomain -current localcomputer
 $dom_forest = $dom.forest
 
 class DomainHandler
-{
-
-    
+{   
     # Grab strings for memberof display
     [string]$RX_CN = "N=(.*)"
     [PScustomobject]$query
@@ -65,12 +64,41 @@ class DomainHandler
 
     }
 
-    [void]unlock([int]$filter, [string]$crit)
+    [void]unlock([int]$filter_key, [string]$query)
     {
-        print $filter $crit
+        $filter = $this.filters[$filter_key]
+        $this.query = get-aduser -filter "$filter -eq $query" -property lockedout, employeeid, name
+        $c = ''; $s = ''
+        try 
+        {
+            unlock-adaccount -identity $this.query.employeeid
+
+            $id = $this.query.employeeid
+            $name = $this.query.name
+            $lock = $this.query.lockedout
+            if($lock -eq $true){$c = 'darkred'; $s = 'Locked'}
+            elseif($lock -eq $false){$c = 'darkgreen'; $s = 'Unlocked'}
+            print "[Success]" -fore darkgreen -nonewline; print " Unlocked object: $name($id)"
+            print "[Info]" -fore darkyellow -nonewline; print " Object status: $s"
+        } 
+
+        catch {print "[Error] Unable to unlock user, please ensure your account has sufficient permissions or that the user exists" -fore darkred}
     }
 
-    # return arraylist containing all members of a provided member
+    [void]reset([int]$filter_key, [string]$query, [bool]$verbose, [string]$option)
+    {
+
+        $cred = read-host "Enter password" -assecurestring
+        $cred_comp = read-host "Confirm password" -assecurestring
+        $t = [system.runtime.interopservices.marshal]::ptrtostringauto([system.runtime.interopservices.marshal]::securestringtobstr($cred))
+        $t2 = [system.runtime.interopservices.marshal]::ptrtostringauto([system.runtime.interopservices.marshal]::securestringtobstr($cred_comp))
+        $filter = $this.filters[$filter_key]
+        $this.query = get-aduser -filter "$filter -eq $query" -property lockedout, employeeid, name
+
+        set-adaccountpassword -identity $this.query.employeeid
+    }
+
+    # return arraylist containing all properties of a provided member
     [System.Collections.ArrayList]format_member([string]$member)
     {
         [System.Collections.ArrayList]$formatted_member = @()
@@ -85,6 +113,82 @@ class DomainHandler
         }
         return $formatted_member
     }
+
+    # display stored query
+    [void]display_query()
+    {
+        print "| Query results |" -foregroundcolor darkcyan
+        if($this.query.objectclass -eq 'user')
+        {
+            foreach ($i in $this.user_props.keys)
+            {
+                # call upon format_member to format supervisor output
+                if($i -eq 'manager')
+                {
+                    $fi = $this.format_member($this.query.$i)
+                    print $this.user_props[$i] -nonewline -fore darkyellow; print $fi[0]
+                }
+                # call upon format_member to format security groups
+                elseif($i -eq 'memberof')
+                {
+                    if($this.verbose)
+                    {
+                        $fi = $this.format_member($this.query.$i)
+                        print $this.user_props[$i] -foregroundcolor blue
+                        foreach($member in $fi){print $member}
+                    }
+                }
+
+                elseif($i -eq 'lockedout')
+                {
+                   if($this.query.$i -eq $true){$c='darkred';$s='Locked'}else{$c='darkgreen';$s='Unlocked'}
+                   print $this.user_props[$i] -nonewline -foregroundcolor darkyellow; print $s -foregroundcolor $c
+                }
+
+                else 
+                {
+                    print $this.user_props[$i] -nonewline -foregroundcolor darkyellow;print $this.query.$i
+                } 
+            }
+        }
+        elseif($this.query.objectclass -eq 'computer')
+        {
+            foreach($i in $this.computer_props.keys)
+            {
+                print $this.computer_props[$i] -nonewline -foregroundcolor darkyellow;print $this.query.$i
+            }
+
+            if($this.verbose)
+            {
+                $gwmi = gwmi -class win32_computersystem -computername $this.query.samaccountname.replace("$","") | select-object username
+                print "[VERBOSE] Logged in user: " -nonewline -foregroundcolor blue;print $gwmi.username
+            }
+        }
+    }
+
+    # This method attempts to query AD computer objects and find the hostname for the provided user's computer. It is an inneficient method in a large enviroment without
+    # specifing an OU to search in. A workaround would be to enable a startup script for users in VBS like so:
+    #
+    # Courtesy of Cazi @ https://community.spiceworks.com/how_to/34096-show-user-s-logged-on-computer-name-in-active-directory
+    #
+    # Option Explicit
+    # Const ADS_PROPERTY_UPDATE = 2 
+    # Dim objSysInfo, objUser, objNetwork, strComputer, strDescription
+
+    # Set objSysInfo = CreateObject("ADSystemInfo")
+    # Set objUser = GetObject("LDAP://" & objSysInfo.UserName)
+
+    # Set objNetwork = CreateObject("Wscript.Network")
+    # strComputer = objNetwork.ComputerName
+
+    # strDescription = "Logged on to " & strComputer & " at " & Date & " " & Time
+
+    # objUser.Put "description", strDescription
+    # objUser.SetInfo
+    # 
+    # Users would have to have delegated permissions to update their own description field. The script would have the user update it with the current hostname and time logged in, this information
+    # can be easily queried with the get-aduser cmdlet. 
+    # The method below will be more efficient once the code to specify an OU is added and will only be used if the method above isn't possible.
 
     # [void]get_comp_user([string]$user)
     # {
@@ -110,55 +214,6 @@ class DomainHandler
     #         }
     #     }
     # }
-
-    # display stored query
-    [void]display_query()
-    {
-        print "| Query results |" -foregroundcolor darkcyan
-        if($this.query.objectclass -eq 'user')
-        {
-            foreach ($i in $this.user_props.keys)
-            {
-                # call upon format_member to format supervisor output
-                if($i -eq 'manager')
-                {
-                    $fi = $this.format_member($this.query.$i)
-                    print $this.user_props[$i] -nonewline -foregroundcolor darkyellow;print $fi[0]
-                }
-                # call upon format_member to format security groups
-                elseif($i -eq 'memberof')
-                {
-                    if($this.verbose)
-                    {
-                        $fi = $this.format_member($this.query.$i)
-                        print $this.user_props[$i] -foregroundcolor blue
-                        foreach($member in $fi){print $member}
-                    }
-                }
-
-                elseif($i -eq 'lockedout')
-                {
-                   if($this.query.$i -eq $true){$c='darkred';$s='Locked'}else{$c='darkgreen';$s='Unlocked'}
-                   print $this.user_props[$i] -nonewline -foregroundcolor darkyellow; print $s -foregroundcolor $c
-                }
-
-                else {print $this.user_props[$i] -nonewline -foregroundcolor darkyellow;print $this.query.$i}
-            }
-        }
-        elseif($this.query.objectclass -eq 'computer')
-        {
-            foreach($i in $this.computer_props.keys)
-            {
-                print $this.computer_props[$i] -nonewline -foregroundcolor darkyellow;print $this.query.$i
-            }
-
-            if($this.verbose)
-            {
-                $gwmi = gwmi -class win32_computersystem -computername $this.query.samaccountname.replace("$","") | select-object username
-                print "[VERBOSE] Logged in user: " -nonewline -foregroundcolor blue;print $gwmi.username
-            }
-        }
-    }
 }
 
 
@@ -301,20 +356,28 @@ function main
     $handler = [DomainHandler]::new()
     startup
 
+    [System.Collections.ArrayList]$mode = @(
+        'search',
+        'unlock',
+        'reset',
+        'modify',
+        'set'
+    )
+
     do
     {
         print "$(whoami)@tkc2>" -nonewline
         $parser.parse_args()
-        if($parser.namespace.mode -eq 'search')
+        if($parser.namespace.mode -eq $mode[0])
         {
             $handler.search($parser.namespace.item('-f'), $parser.namespace.item('-q'), $parser.namespace.item('-v'))
             $handler.display_query()
         }
-        elseif($parser.namespace.mode -eq 'unlock')
+        elseif($parser.namespace.mode -eq $mode[1])
         {
-
+            $handler.unlock($parser.namespace.item('-f'), $parser.namespace.item('-q'))
         }
-        elseif($parser.namespace.mode -eq 'modify')
+        elseif($parser.namespace.mode -eq $mode[2])
         {
 
         }
