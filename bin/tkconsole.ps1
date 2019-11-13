@@ -443,7 +443,9 @@ function main
         'unlock',
         'reset',
         'modify',
-        'set'
+        'set',
+        'help',
+        'ping'
     )
 
     do
@@ -471,7 +473,15 @@ function main
         {
 
         }
-        elseif($parser.namespace.mode -eq 'help')
+        elseif($parser.namespace.mode -eq $mode[6])
+        {
+            $h = $parser.namespace.item('-h')
+            print "[Info] " -nonewline -fore darkyellow; print " Pinging $h"
+            $r = test-connection -computername $parser.namespace.item('-h') -count 1 -quiet
+            if($r){print "[Ping] " -nonewline -fore darkyellow; print " $h is up"}
+            else{print "[Ping] " -nonewline -fore darkyellow; print " $h is down"}
+        }
+        elseif($parser.namespace.mode -eq $mode[5])
         {
             print "------------------------ Help ------------------------ " -fore blue
             $_source = join-path -path "$PSScriptRoot" -childpath "cfg"
