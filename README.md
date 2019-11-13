@@ -30,7 +30,7 @@ wget https://github.com/disastrpc/administrator_toolkit/archive/master.zip
 ```
 powershell $wc=New-Object System.Net.WebClient; $wc.DownloadFile('https://github.com/disastrpc/administrator_toolkit.git','%userprofile%\Downloads\Administrator_Toolkit_Installer.zip')
 ```
-## Installing
+## Installing (Windows)
 
 The utility includes its own installer, adding it to a system is as simple as running the install.bat file located in the root of the install folder. The toolkit will be installed in the C:\Administrator_Toolkit directory and a shortcut will be created on the desktop.
 Because a lot of the cmdlets used perform administrative actions, the program needs to be started using an account with domain admin permissions.
