@@ -1,8 +1,16 @@
+# Administrator Toolkit
+# by Jared Freed @ github.com/disastrpc
+# This program provides a familiar CLI for performing active directory tasks like resetting passwords, unlocking accounts and modifying and 
+# querying objects for information.
+
 using namespace System;
 using namespace Systems.Collections.Generic
 using namespace System.Runtime.InteropServices
 import-module activedirectory
+
+# more familiar
 set-alias -name print -value write-host
+
 $PSver = $PSversiontable.PSversion
 $ver = '2.0'
 $dom = get-addomain -current localcomputer
@@ -12,9 +20,13 @@ class DomainHandler
 {   
     # Grab strings for memberof display
     [string]$RX_CN = "N=(.*)"
-    [PScustomobject]$query
+    [string]$RX_BAD_CHARS = "[\*\?\]\[\^\+\`\!\@\#\$\%\&]"
     [bool]$verbose = $false
+    [bool]$prompt = $false
+    [bool]$whatif = $false
+    [PScustomobject]$query
 
+ 
     # filters to be used by ad searches
     [hashtable]$filters = @{
         1 = 'Name';
@@ -38,7 +50,7 @@ class DomainHandler
     }
 
     $computer_props = [ordered]@{
-        'samaccountname' = 'Display name: ';
+        'samaccountname' = 'Hostname: ';
         'description' = 'Description: ';
         'ipv4address' = 'IPv4: ';
         'operatingsystem' = 'OS: ';
@@ -51,17 +63,20 @@ class DomainHandler
     # call get-aduser cmdlet with provided parameters
     [void]search([int]$filter_key, [string]$query, [bool]$verbose)
     {
-        $this.verbose = $verbose
-        $filter = $this.filters[$filter_key]
-        if($filter_key -eq 1 -or $filter_key -eq 2)
+        try
         {
-            $this.query = get-aduser -filter "$filter -eq $query" -properties name, employeeid, lockedout, manager, lastlogondate, title, emailaddress, department, memberof, objectclass
+            $this.verbose = $verbose
+            $filter = $this.filters[$filter_key]
+            if($filter_key -eq 1 -or $filter_key -eq 2)
+            {
+                $this.query = get-aduser -filter "$filter -eq $query" -properties name, employeeid, lockedout, manager, lastlogondate, title, emailaddress, department, memberof, objectclass
+            }
+            elseif($filter_key -eq 3 -or $filter_key -eq 4)
+            {
+                $this.query = get-adcomputer -filter "$filter -eq '$query'" -properties samaccountname, description, ipv4address, operatingsystem, operatingsystemversion, dnshostname, enabled, canonicalname, objectclass
+            }
         }
-        elseif($filter_key -eq 3 -or $filter_key -eq 4)
-        {
-            $this.query = get-adcomputer -filter "$filter -eq '$query'" -properties samaccountname, description, ipv4address, operatingsystem, operatingsystemversion, dnshostname, enabled, canonicalname, objectclass
-        }
-
+        catch{print "[Error] Unable to search for query '$query' using filter '$filter_key'" -fore darkred}
     }
 
     [void]unlock([int]$filter_key, [string]$query)
@@ -78,24 +93,67 @@ class DomainHandler
             $lock = $this.query.lockedout
             if($lock -eq $true){$c = 'darkred'; $s = 'Locked'}
             elseif($lock -eq $false){$c = 'darkgreen'; $s = 'Unlocked'}
-            print "[Success]" -fore darkgreen -nonewline; print " Unlocked object: $name($id)"
+            print "[Success]" -fore darkgreen -nonewline; print " Unlocked object: " -nonewline;print "$name ($id)" -fore blue
             print "[Info]" -fore darkyellow -nonewline; print " Object status: $s"
         } 
 
-        catch {print "[Error] Unable to unlock user, please ensure your account has sufficient permissions or that the user exists" -fore darkred}
+        catch {print "[Error] Unable to unlock '$query' with filter '$filter', please ensure your account has sufficient permissions or that the user exists" -fore darkred}
     }
 
-    [void]reset([int]$filter_key, [string]$query, [bool]$verbose, [string]$option)
+    [void]reset([int]$filter_key, [string]$query, [string]$prompt, [bool]$whatif)
     {
+        if($query -match $this.RX_BAD_CHARS){print '[Error] Invalid character used' -fore darkred}
+        else
+        {
+            try{
+            $this.prompt = $prompt; $this.whatif = $whatif
 
-        $cred = read-host "Enter password" -assecurestring
-        $cred_comp = read-host "Confirm password" -assecurestring
-        $t = [system.runtime.interopservices.marshal]::ptrtostringauto([system.runtime.interopservices.marshal]::securestringtobstr($cred))
-        $t2 = [system.runtime.interopservices.marshal]::ptrtostringauto([system.runtime.interopservices.marshal]::securestringtobstr($cred_comp))
-        $filter = $this.filters[$filter_key]
-        $this.query = get-aduser -filter "$filter -eq $query" -property lockedout, employeeid, name
+            $filter = $this.filters[$filter_key]
+            $this.query = get-aduser -filter "$filter -eq $query" -property lockedout, employeeid, name
+            $name = $this.query.name; $id = $this.query.employeeid; $p = $this.prompt
 
-        set-adaccountpassword -identity $this.query.employeeid
+            print "[Info] " -fore darkyellow -nonewline; print "Changing password for " -nonewline;print "$name ($id)" -nonewline -fore darkyelllow;print ", enter 'c' to confirm: " -nonewline
+            $h = get-host
+            $c = $h.ui.readline()
+            if($c -ceq 'c')
+            {
+
+                $cred = read-host "Enter password" -assecurestring
+                $cred_comp = read-host "Confirm password" -assecurestring
+
+                # Decrypt password into temporary variable to compare
+                $t = [system.runtime.interopservices.marshal]::ptrtostringauto([system.runtime.interopservices.marshal]::securestringtobstr($cred))
+                $t2 = [system.runtime.interopservices.marshal]::ptrtostringauto([system.runtime.interopservices.marshal]::securestringtobstr($cred_comp))
+                # check if passwords match
+                if($t -ceq $t2)
+                {
+                    # Clear temporary variables from memory
+                    if($t){$t=$null};if($t2){$t2=$null}
+
+                    # Check if property must be set to true
+                    if($prompt -eq $null){$this.prompt = $false}elseif($prompt){$this.prompt = $true}
+        
+                    if(-not $this.whatif)
+                    {
+                        set-adaccountpassword -identity $this.query.employeeid -newpassword $cred
+                        set-aduser -identity $this.query.employeeid -changepasswordatlogon $this.prompt
+                        print "[Info] " -fore darkyellow -nonewline; print "ChangePasswordAtLogin property is " -nonewline;print $p -fore darkyellow
+                    }
+                    elseif($this.whatif)
+                    {
+                        print '[Info] ' -fore darkyellow -nonewline; print "Performing 'whatif' operation"
+                        set-adaccountpassword -whatif -identity $this.query.employeeid -newpassword $cred
+                        set-aduser -whatif -identity $this.query.employeeid -changepasswordatlogon $this.prompt
+                        print "[Info] " -fore darkyellow -nonewline; print "ChangePasswordAtLogin property is " -nonewline;print $p -fore darkyellow
+                    }
+                    print "[Info] " -nonewline -fore darkyellow; print "WhatIf operation for $name ($id) completed"
+                }
+                else{print "[Error] Passwords don't match" -fore darkred}
+            }
+            else {print "[Info] " -fore darkyellow -nonewline; print "Aborting..."}
+
+            } catch {print "[Error] Could not parse query '$query'" -fore darkred}
+        }
     }
 
     # return arraylist containing all properties of a provided member
@@ -117,9 +175,10 @@ class DomainHandler
     # display stored query
     [void]display_query()
     {
-        print "| Query results |" -foregroundcolor darkcyan
+
         if($this.query.objectclass -eq 'user')
         {
+            print "| Query results |" -foregroundcolor darkcyan
             foreach ($i in $this.user_props.keys)
             {
                 # call upon format_member to format supervisor output
@@ -153,6 +212,7 @@ class DomainHandler
         }
         elseif($this.query.objectclass -eq 'computer')
         {
+            print "| Query results |" -foregroundcolor darkcyan
             foreach($i in $this.computer_props.keys)
             {
                 print $this.computer_props[$i] -nonewline -foregroundcolor darkyellow;print $this.query.$i
@@ -164,6 +224,8 @@ class DomainHandler
                 print "[VERBOSE] Logged in user: " -nonewline -foregroundcolor blue;print $gwmi.username
             }
         }
+
+        $this.query = $null
     }
 
     # This method attempts to query AD computer objects and find the hostname for the provided user's computer. It is an inneficient method in a large enviroment without
@@ -186,9 +248,9 @@ class DomainHandler
     # objUser.Put "description", strDescription
     # objUser.SetInfo
     # 
-    # Users would have to have delegated permissions to update their own description field. The script would have the user update it with the current hostname and time logged in, this information
-    # can be easily queried with the get-aduser cmdlet. 
-    # The method below will be more efficient once the code to specify an OU is added and will only be used if the method above isn't possible.
+    # Users would have to have delegated permissions to update their own description field. The script would have the user update it with the current 
+    # hostname and time logged in, this information can be easily queried with the get-aduser cmdlet. 
+    # As an alternative, the method below will be more efficient once the code to specify an OU is added:
 
     # [void]get_comp_user([string]$user)
     # {
@@ -216,8 +278,29 @@ class DomainHandler
     # }
 }
 
+# Notes on ArgumentParser class:
+# The ArgumentParser class will work standalone with any other program (it will be released separately as a module once its more refined).
+# A parser object can be created with the default constructor. Calling upon the get_args() method will invoke the Host.UI.Readline method,
+# this can be used in conjunction with parse_args() to provide CLI-like argument parsing while on a loop. But any space separated string 
+# parameter can be supplied to parse_args().
 
+# function add_numbers([int]$n1, [int]$n2)
+# { 
+#   return $n1 + $n2
+# }
+#
+# $parser = [ArgumentParser]::new()
+# $parser.parse_args($parser.get_args())
+# if($parser.namespace.mode -eq 'add')
+# {
+#   add_numbers($parser.namespace.value('-n1'), $parser.namespace.value('-n2'))
+# }
+
+# The first key on the table will always be the mode argument, all following arguments need to be prefixed with a '-' or '--'. Long string arguments 
+# can be separated by " " and multiple values can be separated by commas (1,2,3). Separated values will be assigned as a list to the key and 
+# can be accessed with $parser.namespace['key'][index].
 # Contains lists and actions used in ArgumentParser
+
 class ArgumentContainer
 {
     [System.Collections.ArrayList]$arg_lst
@@ -239,12 +322,12 @@ class ArgumentParser : ArgumentContainer
     # check for comma separated values
     [string]$RX_COMMAS = "(,[\w]+)|([\w]+,)"
 
-    [void]parse_args()
+    [void]parse_args([string]$arg_str)
     {
         # clear namespace at beginning of invocation
         $this.namespace.clear()
 
-        $this.arg_str = $this.get_arg_str()
+        $this.arg_str = $arg_str
         $this.arg_lst = $this.arg_str.split(' ')
 
         if($this.arg_lst[0] -match $this.RX_OPT_ARG -or $this.arg_lst[0] -match $this.RX_OPT_LARG)
@@ -272,7 +355,7 @@ class ArgumentParser : ArgumentContainer
             if($v -match $this.RX_OPT_ARG -or $v -match $this.RX_OPT_LARG)
             {
                 # detect empty value and assign true
-                if($this.arg_lst[$p1 + 1] -match $this.RX_OPT_ARG)
+                if($this.arg_lst[$p1 + 1] -match $this.RX_OPT_ARG -or $this.arg_lst[$p1 + 1] -match $this.RX_OPT_LARG)
                 {
                     $this.namespace[$v] = $true
                 }
@@ -321,11 +404,10 @@ class ArgumentParser : ArgumentContainer
             $p1++
  
         }
-
     }
 
     # get input from user
-    [string]get_arg_str() 
+    [string]get_args() 
     {
         $h = get-host
         $this.arg_str = $h.UI.readline()
@@ -366,8 +448,8 @@ function main
 
     do
     {
-        print "$(whoami)@tkc2>" -nonewline
-        $parser.parse_args()
+        print "$(whoami)@tkc2>" -nonewline -fore blue
+        try{$parser.parse_args($parser.get_args())}catch{print "[Error] Unable to parse arguments, enter 'help' for usage" -fore darkred}
         if($parser.namespace.mode -eq $mode[0])
         {
             $handler.search($parser.namespace.item('-f'), $parser.namespace.item('-q'), $parser.namespace.item('-v'))
@@ -379,7 +461,7 @@ function main
         }
         elseif($parser.namespace.mode -eq $mode[2])
         {
-
+            $handler.reset($parser.namespace.item('-f'), $parser.namespace.item('-q'), $parser.namespace.item('-p'), $parser.namespace.item('--what-if'))
         }
         elseif($parser.namespace.mode -eq 'list')
         {
@@ -388,6 +470,13 @@ function main
         elseif($parser.namespace.mode -eq 'add')
         {
 
+        }
+        elseif($parser.namespace.mode -eq 'help')
+        {
+            print "------------------------ Help ------------------------ " -fore blue
+            $_source = join-path -path "$PSScriptRoot" -childpath "cfg"
+            $source = join-path -path $_source -childpath 'help'
+            get-content -raw $source | print
         }
         elseif($parser.namespace.mode -eq 'clear'){clear-host}
 
