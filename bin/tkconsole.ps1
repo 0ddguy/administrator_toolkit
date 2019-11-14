@@ -465,14 +465,6 @@ function main
         {
             $handler.reset($parser.namespace.item('-f'), $parser.namespace.item('-q'), $parser.namespace.item('-p'), $parser.namespace.item('--what-if'))
         }
-        elseif($parser.namespace.mode -eq 'list')
-        {
-
-        }
-        elseif($parser.namespace.mode -eq 'add')
-        {
-
-        }
         elseif($parser.namespace.mode -eq $mode[6])
         {
             $h = $parser.namespace.item('-h')
