@@ -28,7 +28,7 @@ wget https://github.com/disastrpc/administrator_toolkit/archive/master.zip
 ```
 ## Windows:
 ```
-powershell $wc=New-Object System.Net.WebClient; $wc.DownloadFile('https://github.com/disastrpc/administrator_toolkit.git','%userprofile%\Downloads\Administrator_Toolkit_Installer.zip')
+powershell $wc=New-Object System.Net.WebClient; $wc.DownloadFile('https://github.com/disastrpc/administrator_toolkit/archive/2.0.zip','%userprofile%\Downloads\Administrator_Toolkit_Installer.zip')
 ```
 ## Installing (Windows)
 
