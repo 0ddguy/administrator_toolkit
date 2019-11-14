@@ -26,10 +26,6 @@ sudo dnf install -y powershell && sudo dnf install -y powershell-preview
 ```
 wget https://github.com/disastrpc/administrator_toolkit/archive/master.zip
 ```
-## Windows:
-```
-powershell $wc=New-Object System.Net.WebClient; $wc.DownloadFile('https://github.com/disastrpc/administrator_toolkit/archive/2.0.zip','%userprofile%\Downloads\Administrator_Toolkit_Installer.zip')
-```
 ## Installing (Windows)
 
 The utility includes its own installer, adding it to a system is as simple as running the install.bat file located in the root of the install folder. The toolkit will be installed in the C:\Administrator_Toolkit directory and a shortcut will be created on the desktop.
