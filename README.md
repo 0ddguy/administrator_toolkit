@@ -38,26 +38,32 @@ Because a lot of the cmdlets used perform administrative actions, the program ne
 ## Usage
 ```
 Modes:
-    search      - Search for users, computers or IPv4 addresses  
-    unlock      - Unlock a provided account
-    reset       - Reset an account password
-------------------- Filters ------------------------
+    search      -> Search for users, computers or IPv4 addresses  
+    unlock      -> Unlock a provided account
+    reset       -> Reset an account password
+    ping        -> Check if a host is up
+
+ Filters:
     -f          -> Specify filter from below 
     1           -> Full name surrounded by quotations
     2           -> Employee ID
     3           -> Computer name
     4           -> IPv4 address
-------------------- Switches -----------------------
+
+ Switches:
     -q          -> Specify string to query for
+    -h          -> Specify host to search for
     -v          -> Enable verbose output
     -p          -> For use with reset mode; sets change at next login property to true
     --what-if   -> Perfom what if operation on mode
-------------------- Usage ---------------------------
+
+ Usage:
     <mode> <options>
     Ex:
     search -f 2 -q 123456
     search -f 1 -q "John Smith"
     unlock -f 2 -q 123456
+    ping -h google.com
     search -f 4 -q 10.10.10.10
     reset --what-if -f 1 -q "Alice Wellington" -p
 ```
