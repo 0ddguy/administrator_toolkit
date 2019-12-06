@@ -1,6 +1,6 @@
 @echo off
 xcopy bin "%SystemDrive%\ProgramData\Administrator Toolkit" /f /s /i /k
-cacls "%SystemDrive /e /p Everyone:f
+cacls "%SystemDrive%\ProgramData\Administrator Toolkit" /e /p Everyone:f
 echo Set oWS = WScript.CreateObject("WScript.Shell") > CreateShortcut.vbs
 echo sLinkFile = "%UserProfile%\Desktop\Administrator Toolkit.lnk" >> CreateShortcut.vbs
 echo Set oLink = oWS.CreateShortcut(sLinkFile) >> CreateShortcut.vbs
