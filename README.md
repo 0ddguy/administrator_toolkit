@@ -1,10 +1,10 @@
 # Administrator Toolkit
 ## Toolkit for Active Directory Administration
-The Administrator Toolkit is a custom tool written on PowerShell that provides a wrapper for many Active Directory PS Cmdlets allowing users to interact with the domain controller, computer objects, and user accounts more efficiently. It allows administrators to run automated scripts, and queries to nodes and user objects.
+The Administrator Toolkit is a custom tool written on PowerShell that provides a wrapper for many Active Directory PS Cmdlets allowing users to interact with the domain controller, query computer objects and user accounts more efficiently as well as a framework for automation.
 
 ## Installing (Windows)
 
-The utility includes its own installer, adding it to a system is as simple as running the install.bat file located in the root of the install folder. The toolkit will be installed in the C:\Administrator_Toolkit directory and a shortcut will be created on the desktop.
+The utility includes its own installer, adding it to a system is as simple as running the install.bat file located in the root of the install folder. The toolkit will be installed in the C:\ProgramData\Administrator_Toolkit directory and a shortcut will be created on the desktop.
 Because a lot of the cmdlets used perform administrative actions, the program needs to be started using an account with domain admin permissions.
 
 ## Usage
