@@ -1,0 +1,11 @@
+Get User State Module
+by Jared Freed
+
+Takes a list of computers, a username and a CN path for AD and gets the systems a user is logged into:
+
+	load ps-img-tweaks
+	
+	   Option	 Required?			  Description
+	|   user	|   Yes	  |	=> specify the username to query for |
+	|   hosts	|   Yes	  | 	=> specify list of computers	     |
+

@@ -1,0 +1,17 @@
+Image Tweaks Module
+by Jared Freed
+
+Perform finishing touches on a provided computer or list of computers, these include:
+- Set default applications
+- Copy shortcuts and installers to node
+- Add local policy to disable Firefox automatic update prompts
+
+	load ps-img-tweaks
+	
+	     Option	 Required?			    Description
+	[ host		|   Yes	  |	=> specify a single host or IP						]
+	[ hostfile	|   No	  |	=> specify a file containing multiple hosts or IPs (one per line)	]
+	[ proj		|   Yes	  |	=> specify a project (cfeec, opwdd, cyes, outreach)			]
+	[ ffupdate	|   No	  |	=> should firefox update be disabled? (enable, disable)			]
+	[ poisonedns    |   No    |     => resolve poisoned dns hostnames
+
