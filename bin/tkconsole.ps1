@@ -1,20 +1,17 @@
 # Administrator Toolkit
 # by Jared Freed @ github.com/disastrpc
-# This program provides a familiar CLI for performing active directory tasks like resetting passwords, unlocking accounts and modifying and 
+# This script provides a familiar CLI for performing active directory tasks like resetting passwords, unlocking accounts and modifying and 
 # querying objects for information.
 
-using module '.\argparse\argparse.psd1'
+using module '.\modules\argparse\argparse.psd1'
 using namespace System
 using namespace Systems.Collections.Generic
 using namespace System.Runtime.InteropServices
 
 import-module activedirectory
 
-# more familiar
-set-alias -name print -value write-host
-
 $PSver = $PSversiontable.PSversion
-$ver = 'v2.1.0-initial'
+$ver = '2.2.0'
 $dom = get-addomain -current localcomputer
 $dom_forest = $dom.forest
 
@@ -28,29 +25,28 @@ class DomainHandler
     [bool]$whatif = $false
     [PScustomobject]$query
 
-    # filters to be used by ad searches
-    [hashtable]$filters = @{
+    # filters to be used by ad searches, uses LDAP names
+    [hashtable] $filters = @{
         1 = 'Name';
         2 = 'EmployeeID';
-        3 = 'Name';
+        3 = 'ComputerName';
         4 = 'IPv4Address';
-        5 = 'LoggedOn'
     }
 
     # ordered dictionaries used in displaying queries
-    $user_props = [ordered]@{
-        'name' = 'Name: ';
-        'employeeid' = 'Employee ID: ';
-        'title' = 'Title: ';
-        'lockedout' = 'Lock status: ';
-        'emailaddress' = 'Email address: ';
-        'manager' = 'Supervisor: ';
-        'department' = 'Department: ';
-        'lastlogondate' = 'Last logged in: ';
-        'memberof' = '[VERBOSE] Member of: ';
+    [hashtable] $user_props = [ordered]@{
+        'name' = 'Name';
+        'employeeid' = 'EmployeeID';
+        'title' = 'Title';
+        'lockedout' = 'LockStatus';
+        'emailaddress' = 'EmailAddress';
+        'manager' = 'Supervisor';
+        'department' = 'Department';
+        'lastlogondate' = 'LastOnline';
+        'memberof' = 'MemberOf';
     }
 
-    $computer_props = [ordered]@{
+    [hashtable] $computer_props = [ordered]@{
         'samaccountname' = 'Hostname: ';
         'description' = 'Description: ';
         'ipv4address' = 'IPv4: ';
@@ -67,34 +63,37 @@ class DomainHandler
         try
         {
             $this.verbose = $verbose
-            $filter = $this.filters[$filter_key]
-            if(! $filter){print "[Error] " -fore darkred -nonewline; print "Invalid filter $filter_key"}
+            if(! $filter_key){Write-Output "[Error] Invalid filter $filter_key"}
             else
             {
                 if($filter_key -eq 1 -or $filter_key -eq 2)
                 {
-                    $this.query = get-aduser -filter "$filter -eq '$query'" -properties name, employeeid, lockedout, manager, lastlogondate, title, emailaddress, department, memberof, objectclass
+                    $this.query = get-aduser -filter "$($this.filters[$filter_key]) -eq '$query'" -properties name, employeeid, lockedout, manager, lastlogondate, title, emailaddress, department, memberof, objectclass
                 }
-                elseif($filter_key -eq 3 -or $filter_key -eq 4)
+                elseif($filter_key -eq 3)
                 {
-                    $this.query = get-adcomputer -filter "$filter -eq '$query'" -properties samaccountname, description, ipv4address, operatingsystem, operatingsystemversion, dnshostname, enabled, canonicalname, objectclass
+                    #$this.query = get-adcomputer -filter "$($this.filters[$filter_key]) -eq '$query'" -properties samaccountname, description, ipv4address, operatingsystem, operatingsystemversion, dnshostname, enabled, canonicalname, objectclass
+                    $this.query = Get-ADComputer -Identity $query -properties samaccountname, description, ipv4address, operatingsystem, operatingsystemversion, dnshostname, enabled, canonicalname, objectclass
+                }
+                elseif($filter_key -eq 4)
+                {
+                    $this.query = Get-ADComputer -Filter "$($this.filters[$filter_key]) -eq '$query'" -Properties IPv4Address, samaccountname, operatingsystemversion, operatingsystem, enabled, canonicalname, objectclass, description
                 }
 
                 if (! $this.query)
                 {
-                    print "[Error] " -fore darkred -nonewline; print "No results for filter $filter and '$query'"
+                    [Console]::WriteLine("[Error] No results for filter $($this.filters[$filter_key]) and '$query'")
                 }
             }
         }
-        catch{print "[Error] " -nonewline -fore darkred; print "Unable to search for query '$query' using filter '$filter_key'"}
+        catch{[Console]::WriteLine("[Error] Unable to search for query '$query' using filter '$filter_key'")}
     }
 
     [void]unlock([int]$filter_key, [string]$query)
     {
-        $filter = $this.filters[$filter_key]
-        try{$this.query = get-aduser -filter "$filter -eq '$query'" -property lockedout, employeeid, name}catch{}
+        try{$this.query = get-aduser -filter "$($this.filters[$filter_key]) -eq '$query'" -property lockedout, employeeid, name}catch{}
         $c = ''; $s = ''
-        if($query -match $this.RX_BAD_CHARS){print '[Error] Invalid character used' -fore darkred}
+        if($query -match $this.RX_BAD_CHARS){Write-Output '[Error] Invalid character used'}
         else
         {
             try 
@@ -105,36 +104,32 @@ class DomainHandler
                 $name = $this.query.name
                 $lock = $this.query.lockedout
 
-                if($lock -eq $true){$c = 'darkred'; $s = 'Locked'}
-                elseif($lock -eq $false){$c = 'darkgreen'; $s = 'Unlocked'}
+                if($lock -eq $true){$s = 'Locked'}
+                elseif($lock -eq $false){$s = 'Unlocked'}
 
-                print "[Success]" -fore darkgreen -nonewline; print " Unlocked object: " -nonewline;print "$name ($id)" -fore blue
-                print "[Info]" -fore darkyellow -nonewline; print " Object status: $s"
+                [Console]::WriteLine("[Success] Unlocked object: $name ($id)")
+                [Console]::WriteLine("[Info] Object status: $s")
 
             } 
-            catch {print "[Error] Unable to unlock '$query' with filter '$filter', please ensure your account has sufficient permissions or that the user exists" -fore darkred}
+            catch {[Console]::WriteLine("[Error] Unable to unlock '$query' with filter '$($this.filters[$filter_key])', please ensure your account has sufficient permissions or that the user exists")}
         }
     }
 
     [void]reset([int]$filter_key, [string]$prompt, [bool]$whatif, [string]$query)
     {
-        if($query -match $this.RX_BAD_CHARS){print '[Error] Invalid character used' -fore darkred}
+        if($query -match $this.RX_BAD_CHARS){Write-Output "[Error] Invalid character used"}
         else
         {
             try
             {
                 $this.prompt = $prompt; $this.whatif = $whatif
-
-                $filter = $this.filters[$filter_key]
-                try{$this.query = get-aduser -filter "$filter -eq '$query'" -property lockedout, employeeid, name}catch{}
+                $this.query = get-aduser -filter "$($this.filters[$filter_key]) -eq '$query'" -property lockedout, employeeid, name
                 $name = $this.query.name; $id = $this.query.employeeid; $p = $this.prompt
-
-                print "[Info] " -fore darkyellow -nonewline; print "Changing password for " -nonewline; print "$name ($id)" -nonewline -fore darkyellow; print ", enter 'c' to confirm: " -nonewline
+                [Console]::Write("[Info] Changing password for $name ($id), enter 'c' to confirm: ")
                 $h = get-host
                 $c = $h.ui.readline()
                 if($c -ceq 'c')
                 {
-
                     $cred = read-host "Enter password" -assecurestring
                     $cred_comp = read-host "Confirm password" -assecurestring
 
@@ -149,28 +144,28 @@ class DomainHandler
                         if($t){$t=$null};if($t2){$t2=$null}
 
                         # Check if property must be set to true
-                        if($prompt -eq $null){$this.prompt = $false}elseif($prompt){$this.prompt = $true}
+                        if($null -eq $prompt){$this.prompt = $false}elseif($prompt){$this.prompt = $true}
             
                         if( ! $this.whatif)
                         {
                             set-adaccountpassword -identity $this.query.employeeid -newpassword $cred
                             set-aduser -identity $this.query.employeeid -changepasswordatlogon $this.prompt
-                            print "[Info] " -fore darkyellow -nonewline; print "ChangePasswordAtLogin property is " -nonewline;print $p -fore darkyellow
+                            Write-Output "[Info] ChangePasswordAtLogin property is $p"
                         }
                         elseif($this.whatif)
                         {
-                            print '[Info] ' -fore darkyellow -nonewline; print "Performing 'whatif' operation"
+                            Write-Output "[Info] Performing 'whatif' operation"
                             set-adaccountpassword -whatif -identity $this.query.employeeid -newpassword $cred
                             set-aduser -whatif -identity $this.query.employeeid -changepasswordatlogon $this.prompt
-                            print "[Info] " -fore darkyellow -nonewline; print "ChangePasswordAtLogin property is " -nonewline;print $p -fore darkyellow
+                            Write-Output "[Info] ChangePasswordAtLogin property is $p"
                         }
-                        print "[ Ok ] " -fore darkgreen -nonewline; print "Password change complete"
+                        Write-Output "[ Ok ] Password change complete"
                     }
-                    else{print "[Error] Passwords don't match"}
+                    else{Write-Output "[Error] Passwords don't match"}
                 }
-                else {print "[Info] " -fore darkyellow -nonewline; print "Aborting..."}
+                else {Write-Output "[Info] Aborting..."}
 
-            } catch {print "[Error] " -nonewline -fore darkred; print "Could not parse query '$query'"}
+            } catch {Write-Output "[Error] Error '$query'"}
         }
     }
 
@@ -187,60 +182,52 @@ class DomainHandler
                 $formatted_member.add($matches[0].replace('N=',''))
             }
         }
+        write-host $formatted_member
         return $formatted_member
     }
 
     # display stored query
     [void]display_query()
     {
-
         if($this.query.objectclass -eq 'user')
         {
-            print "| Query results |" -foregroundcolor darkcyan
+            Write-Output "| Query results |"
+            [hashtable] $display_query = @{}
             foreach ($i in $this.user_props.keys)
             {
-                # call upon format_member to format supervisor output
-                if($i -eq 'manager')
+                # # call upon format_member to format supervisor output
+                # if($i -eq 'manager')
+                # {
+                #     $fi = $this.format_member($this.query.$i)
+                #     $display_query[$this.user_props[$i]] = $fi
+                # }
+                # call upon format_member to format security groups
+                if($i -eq 'memberof' -and $this.verbose)
                 {
                     $fi = $this.format_member($this.query.$i)
-                    print $this.user_props[$i] -nonewline -fore darkyellow; print $fi[0]
+                   
+                    $display_query[$this.user_props[$i]] = $fi
                 }
-                # call upon format_member to format security groups
-                elseif($i -eq 'memberof')
-                {
-                    if($this.verbose)
-                    {
-                        $fi = $this.format_member($this.query.$i)
-                        print $this.user_props[$i] -foregroundcolor blue
-                        foreach($member in $fi){print "$member;"}
-                    }
-                }
-
-                elseif($i -eq 'lockedout')
-                {
-                   if($this.query.$i -eq $true){$c='darkred';$s='Locked'}else{$c='darkgreen';$s='Unlocked'}
-                   print $this.user_props[$i] -nonewline -foregroundcolor darkyellow; print $s -foregroundcolor $c
-                }
-
                 else 
                 {
-                    print $this.user_props[$i] -nonewline -foregroundcolor darkyellow;print $this.query.$i
+                    $display_query[$this.user_props[$i]] = $this.query.$i                            
                 } 
             }
+
+            $query_object = [PSCustomObject]$display_query
+            $query_object | Format-List -Property Name,EmployeeID,Supervisor,Title,Department,EmailAddress,LockStatus,LastOnline,MemberOf | Out-Host
         }
         elseif($this.query.objectclass -eq 'computer')
         {
-            print "| Query results |" -foregroundcolor darkcyan
+            Write-Output "| Query results |"
+            [hashtable] $display_query = @{}
             foreach($i in $this.computer_props.keys)
             {
-                print $this.computer_props[$i] -nonewline -foregroundcolor darkyellow;print $this.query.$i
+                $display_query[$this.computer_props[$i]] = $this.query.$i                            
             }
 
-            if($this.verbose)
-            {
-                $gwmi = gwmi -class win32_computersystem -computername $this.query.samaccountname.replace("$","") | select-object username
-                print "[VERBOSE] Logged in user: " -nonewline -foregroundcolor blue;print $gwmi.username
-            }
+            $query_object = [PSCustomObject]$display_query
+            $query_object | Format-List | Out-Host
         }
 
         $this.query = $null
@@ -274,7 +261,7 @@ class DomainHandler
     # {
     #     $ping = new-object System.Net.NetworkInformation.Ping
     #     $comp_lst = get-adcomputer -filter "enabled -eq True"
-    #     print $comp_lst
+    #     Write-Output $comp_lst
     #     foreach($comp in $comp_lst)
     #     {
     #         $reply = $null
@@ -284,11 +271,11 @@ class DomainHandler
     #             $exp_proc = gwmi win32_process -computer $comp -filter "Name = 'explorer.exe'"
     #             foreach($p in $exp_proc)
     #             {
-    #                 print $p 
+    #                 Write-Output $p 
     #                 $t = ($p.getowner()).user
     #                 if($t -eq $user)
     #                 {
-    #                     print $user": "$comp
+    #                     Write-Output $user": "$comp
     #                 }
     #             }
     #         }
@@ -302,114 +289,20 @@ class DomainHandler
 # startup art and information
 function startup
 {
-    $art_source = join-path -path "$PSScriptRoot" -childpath "startup"
-    $module_source = join-path -path "$PSScriptRoot" -childpath "scripts"
-    $art_count = (get-childitem $art_source | measure-object).count
+    $art_source = Join-Path -path "$PSScriptRoot" -childpath "startup\art"
+    $module_source = Join-Path -path "$PSScriptRoot" -childpath "modules"
+    $art_count = ((get-childitem $art_source | measure-object).count) - 1
     $module_count = (get-childitem $module_source -attributes !directory+!compressed | measure-object).count
     $n = get-random -maximum $art_count
-    $get_art = join-path -path $art_source -childpath $n
-    get-content -raw $get_art | print
-    print "by Jared Freed | GNU General Public License | $ver"
-    print "Host: " -nonewline; print "$(hostname)" -fore darkyellow
-    if($null -eq $dom){print "Domain: " -nonewline; print "No domain detected" -fore darkyellow}
-    else{print "Domain: " -nonewline; print $dom_forest -fore darkgreen}
-    print "Loaded modules: " -nonewline; print $module_count -fore blue
-    print "PS version: " -nonewline; print $PSver -fore blue
-    print "Enter " -nonewline; print "help " -nonewline -fore darkgreen; print 'for usage'
-}
-
-function set_module_arg([string]$mod, [string]$key, [string]$val)
-{
-    $fname = $mod + '-args' + '.dat'
-    if($fname.startswith("ps-"))
-    {
-        $fname = $fname.replace('.ps1', '')
-    }
-
-    if( ! (test-path -path "$PSScriptRoot\argparse\tmp\$fname"))
-    {
-        try{new-item -path "$PSScriptRoot\argparse\tmp" -name "$fname" -itemtype 'file' -force >$null}
-        catch{print "[Error] " -nonewline -fore darkred; print "Unable to create args file, make sure you have access to $PSScriptRoot\argparse\tmp"}
-    }
-
-    $content = $key + '=>' + $val
-
-    try
-    {
-        [System.Collections.ArrayList]$argkeys = @()
-        # gather current args into list
-        foreach($line in get-content "$PSScriptRoot\argparse\tmp\$fname" >$null){$line = $line.split("=>"); $argkeys.add($line[0])}
-
-        if($key -in $argkeys)
-        {
-            set-content -path "$PSScriptRoot\argparse\tmp\$fname" -value (get-content -path "$PSScriptRoot\tmp\$fname" | select-string -pattern "$key" -notmatch >$null)
-            add-content -path "$PSScriptRoot\argparse\tmp\$fname" -value $content >$null
-        }
-        else
-        {
-            add-content -path "$PSScriptRoot\argparse\tmp\$fname" -value $content >$null
-        }
-
-        print "Set: $key => $val"
-    }
-    catch{print "[Error] " -nonewline -fore darkred; print "Unable to set argument, make sure you have access to $PSScriptRoot\tmp"}
-}
-
-function unset_module_arg([string]$mod, [string]$key)
-{
-    $fname = $mod + '-args' + '.dat'
-    
-    if (test-path -path "$PSScriptRoot\argparse\tmp\$fname")
-    {
-        try
-        {
-            if($key -eq 'all'){print "Unset all for module $mod"; remove-item -path "$PSScriptRoot\tmp\$fname"}
-            else
-            {
-                print "Unset: " -nonewline -fore darkyellow; print "$key"
-                set-content -path "$PSScriptRoot\argparse\tmp\$fname" -value (get-content -path "$PSScriptRoot\tmp\$fname" | select-string -pattern "$key" -notmatch)
-            }
-        }
-        catch{print "[Error] " -nonewline -fore darkred; print "Unable to unset argument"}
-    }
-}
-# prints options that have been set for a specific module
-function get_module_args([string]$mod)
-{
-        $fname = $mod + '-args' + '.dat'
-        if(test-path -path "$PSScriptRoot\argparse\tmp\$fname")
-        {
-            print "Arguments for $mod"
-            foreach($line in get-content -path "$PSScriptRoot\argparse\tmp\$fname")
-            {
-                print "| $line |"
-            }
-        }
-        else{print "[Error] " -nonewline -fore darkred; print "Unable to read options, try running 'unset all' and resetting arguments"}
-}
-
-# return hashtable containing argument=>value pairs
-function parse_module_args([string]$mod)
-{
-    $fname = $mod + '-args' + '.dat'
-
-    if($fname.startswith("ps-"))
-    {
-        $fname = $fname.replace('.ps1', '')
-    }
-
-    [hashtable]$module_args = @{}
-
-    foreach($line in get-content -path "$PSScriptRoot\argparse\tmp\$fname")
-    {
-        if($line -match "[\*\?\]\[\^\+\`\!\@\#\$\%\&\|\`"\']"){print "[Warn] " -nonewline -fore darkyellow; print "Bad character detected on argument $line, it will be ignored"; continue}
-        elseif($line)
-        {
-            $_args = $line.split('=>')
-            $module_args[$_args[0]] = $_args[2]
-        }
-    }
-    return $module_args
+    $get_art = Join-Path -path $art_source -childpath $n
+    Get-Content -raw $get_art | Write-Output
+    Write-Output "by Jared Freed | GNU General Public License | $ver"
+    Write-Output "Host: $(hostname)"
+    if($null -eq $dom){Write-Output "Domain: No domain detected"}
+    else{Write-Output "Domain: $dom_forest"}
+    Write-Output "Loaded modules: $module_count"
+    Write-Output "PS version: $PSver"
+    Write-Output "Enter 'help' for usage"
 }
 
 # Main program logic
@@ -422,41 +315,26 @@ function main
 
     startup
 
-    [Array]$mode = @(
-        'search',
-        'unlock',
-        'reset',
-        'modify',
-        'set',
-        'help',
-        'ping',
-        'exec',
-        'list',
-        'man',
-        'use',
-        'options',
-        'unset',
-        'run',
-        'unset'
-    )
-
-    # try to unset variables at beggining of program
-    try{remove-item -path "$PSScriptRoot\argparse\tmp\*.dat"}catch{}
-
     do
     {
-        if($mod){print "$(whoami)@tkc2 " -nonewline -fore blue; $mod_disp=$mod.replace('.ps1',''); print "=> ($mod_disp)>" -nonewline}else{print "$(whoami)@tkc2>" -nonewline -fore blue}
+        if($mod)
+        {
+            $selected_module = $mod.replace('.ps1','')
+            [Console]::Write("$(whoami)@tkc2 => ($selected_module)>")
+        }
+        else
+        {
+            [Console]::Write("$(whoami)@tkc2>")
+        }
         $parser.parse_args($parser.get_args())
-        # catch{print "[Error] " -nonewline -fore darkred; print "Unable to parse arguments, enter 'help' for usage"}
 
-        $invalid = $false
-
-        # check if keys and values contain bad characters
+        # these loops check if keys and values contain bad characters
         foreach($key in $parser.namespace.keys)
         {
             if($key -match $parser.RX_BAD_CHARS)
             {
-                $invalid = $true
+                Write-Output "[Error] Invalid character used"
+                continue
             }
         }
 
@@ -464,196 +342,131 @@ function main
         {
             if($val -match $parser.RX_BAD_CHARS)
             {
-                $invalid = $true
+                Write-Output "[Error] Invalid character used"
+                continue
             }
         }
 
-        if($invalid){print '[Error] ' -fore darkred -nonewline; print 'Invalid character used'; continue}
-
-        # search
-        if($parser.namespace.mode -eq $mode[0])
-        {   
-            $handler.search($parser.namespace.item('-f'), $parser.namespace.val, $parser.namespace.item('-v'))
-            $handler.display_query()
-        }
-
-        # unlock
-        elseif($parser.namespace.mode -eq $mode[1])
+        # switch for all program modes
+        switch ($parser.namespace.mode)
         {
-            $handler.unlock($parser.namespace.item('-f'), $parser.namespace.val)
-        }
-
-        # reset
-        elseif($parser.namespace.mode -eq $mode[2])
-        {
-            $handler.reset($parser.namespace.item('-f'), $parser.namespace.item('-p'), $parser.namespace.item('--whatif'), $parser.namespace.val)
-        }
-
-        # exec modules
-        elseif($parser.namespace.mode -eq $mode[7])
-        {
-            if($parser.namespace.item('-M'))
+            "search" 
             {
-                if ( ! ($parser.namespace.item('-M') -match $parser.RX_BAD_CHARS) -and ! ($parser.namespace.item('--arg-list') -match $parser.RX_BAD_CHARS))
+                $handler.search($parser.namespace.item('-f'), $parser.namespace.val, $parser.namespace.item('-v'))
+                $handler.display_query()
+            }
+            "unlock"
+            {
+                $handler.unlock($parser.namespace.item('-f'), $parser.namespace.val)
+            }
+            "reset"
+            {
+                $handler.reset($parser.namespace.item('-f'), $parser.namespace.item('-p'), $parser.namespace.item('--whatif'), $parser.namespace.val)
+            }
+            "ping"
+            {
+                $h = $parser.namespace.val
+                Write-Output "[Info] Pinging $h"
+                $r = Test-Connection -computername $parser.namespace.val -count 1 -quiet
+                if($r){Write-Output "[Ping] $h is up"}
+                else{Write-Output "[Ping] $h is down"}
+            }
+            "help"
+            {
+
+                $_source = Join-Path -path "$PSScriptRoot" -childpath "startup"
+                $source = Join-Path -path $_source -childpath 'help'
+                Get-Content -raw $source | Write-Output               
+            }
+            "list"
+            {
+                if($parser.namespace.val -eq 'modules')
                 {
-                    $m = $parser.namespace.item('-M'); $m += '.ps1'
-                    $script = $parser.namespace.item('-M')
-                    $arg = $parser.namespace.item('--arg-list')
-                    & $PSScriptRoot\scripts\$script $arg
+                    $items = get-childitem -depth 0 -attributes !directory+!compressed -path "$PSScriptRoot\modules"
+                    Write-Output "Available modules: " 
+                    foreach($i in $items)
+                    {
+                        Write-Output " "$match[0]
+                    }
                 }
-                else {print '[Error] ' -nonewline -fore darkred; print 'Invalid character used'}
-            }
-        }
-
-        # ping mode
-        elseif($parser.namespace.mode -eq $mode[6])
-        {
-            $h = $parser.namespace.val
-            print "[Info] " -nonewline -fore darkyellow; print " Pinging $h"
-            $r = test-connection -computername $parser.namespace.val -count 1 -quiet
-            if($r){print "[Ping] " -nonewline -fore darkyellow; print " $h is up"}
-            else{print "[Ping] " -nonewline -fore darkyellow; print " $h is down"}
-        }
-
-        # help mode
-        elseif($parser.namespace.mode -eq $mode[5])
-        {
-            if($parser.namespace.item('-M'))
-            {
-                $mod_help = $parser.namespace.item('-M') + '-help'
-                $mod_help_source = join-path "$PSScriptRoot\scripts\help" -childpath $mod_help
-                get-content -raw $mod_help_source | print
-            }
-            else
-            {
-                print "------------------------ Help ------------------------ " -fore blue
-                $_source = join-path -path "$PSScriptRoot" -childpath "cfg"
-                $source = join-path -path $_source -childpath 'help'
-                get-content -raw $source | print
-            }
-        }
-
-        # list mode
-        elseif($parser.namespace.mode -eq $mode[8])
-        {
-            if($parser.namespace.val -eq 'filters')
-            {
-                print "Filters: " -fore darkyellow
-                foreach($i in $handler.filters.keys)
+                elseif($parser.namespace.val -eq 'args')
                 {
-                    $v = $handler.filters[$i]
-                    print " $i  =>  $v"
+                    if( ! $mod){Write-Output "[Error] No module selected"}
+                    else
+                    {
+                        $parser.get_module_args($mod)
+                    }
                 }
             }
-            elseif($parser.namespace.val -eq 'modules')
+            "use"
             {
-                $items = get-childitem -depth 0 -attributes !directory+!compressed -path "$PSScriptRoot\scripts"
-                print "Available modules: " -fore darkyellow
-                foreach($i in $items)
+                $f = $false
+                foreach($i in get-childitem -depth 0 -attributes !directory+!compressed -path "$PSScriptRoot\modules")
                 {
-                    $match=$i -match "(?<=\-).*"
-                    $match=$matches[0].split('.')
-                    print " "$match[0]
+                    $file = Split-Path $i -Leaf
+                    if($file -eq ($parser.namespace.val + '.ps1'))
+                    {
+                        Write-Output "[ Ok ] Loaded module $($parser.namespace.val)"       
+                        $mod = $file       
+                        $f = $true
+                        break
+                    }
                 }
-            }
-            elseif($parser.namespace.val -eq 'args')
-            {
-                if( ! $mod){print "[Error] " -fore darkred -nonewline; print "No module selected"}
-                else
-                {
-                    $parser.get_module_args($mod)
-                }
-            }
-            elseif($parser.namespace.val -eq 'modes')
-            {
-                print "Modes: " -fore darkyellow 
-                foreach($i in $mode)
-                {
-                    print $i
-                }
-            }
 
-        }
-
-        # use module
-        elseif($parser.namespace.mode -eq $mode[10])
-        {
-            $f = $false
-            $m = $parser.namespace.val + '.ps1'
-            $m_str = $parser.namespace.val
-            foreach($i in get-childitem -depth 0 -attributes !directory+!compressed -path "$PSScriptRoot\scripts")
-            {
-                # match name of module without specifying the prefix
-                if($i -match ".+?(<?"+$m+")")
-                {
-                    $mod = $matches[0]
-                    print "[ Ok ] " -fore darkgreen -nonewline; print "Loaded module $m_str"                
-                    $f = $true
-                    break
-                }
+                if( ! $f){Write-Output "[Error] Module $($parser.namespace.val) not found"}
             }
-
-            if( ! $f){print "[Error] " -fore darkred -nonewline; print "Module $m_str not found"}
-        }
-
-        # options mode
-        elseif($parser.namespace.mode -eq $mode[11])
-        {
-            if($mod -and $mod.startswith("ps-"))
+            "options"
             {
+
                 $a_mod = $mod.split('.')
 
                 # reassemble string
                 $mod_help = $a_mod[0] + '-help'
-                $mod_help_source = join-path "$PSScriptRoot\scripts\help" -childpath $mod_help
-                get-content -raw $mod_help_source | print
+                $mod_help_source = Join-Path "$PSScriptRoot\modules\help" -childpath $mod_help
+                Get-Content -raw $mod_help_source | Write-Output
+
             }
-            else{print "[Info] " -fore darkyellow -nonewline; print "No module loaded"}
-        }
-
-        # set module options
-        elseif($parser.namespace.mode -eq $mode[4])
-        {
-            $parser.set_module_arg($mod, $parser.namespace.val, $parser.namespace.kw_to)
-        }
-
-        # unset module options
-        elseif($parser.namespace.mode -eq $mode[14])
-        {
-            $parser.unset_module_arg($mod, $parser.namespace.val)
-        }
-
-        # run selected module
-        elseif($parser.namespace.mode -eq $mode[13])
-        {
-            $fname = $mod + '-args' + '.dat'
-
-            if($fname.startswith('ps-'))
+            "set"
             {
+                $parser.set_module_arg($mod, $parser.namespace.val, $parser.namespace.kw_to)
+            }
+            "unset"
+            {
+                $parser.unset_module_arg($mod, $parser.namespace.val)
+            }
+            "run"
+            {
+                $fname = $mod + '-args' + '.dat'
+
                 $fname = $fname.replace('.ps1','')
-            }
+                
 
-            if( ! (test-path -path "$PSScriptRoot\tmp\$fname")){print "[Info] " -fore darkyellow -nonewline; print "No arguments selected, set some arguments using 'set'"}
-            else
-            {
-                [hashtable]$mod_args = $parser.parse_module_args($mod)
-                [System.Collections.ArrayList]$parsed_args = @()
+                if( ! (test-path -path "$PSScriptRoot\tmp\$fname")){Write-Output "[Info] No arguments selected, set some arguments using 'set'"}
+                else
+                {
+                    [hashtable]$mod_args = $parser.parse_module_args($mod)
+                    [System.Collections.ArrayList]$parsed_args = @()
 
-                foreach($key in $mod_args.keys)
-                {                     
-                    [string]$val = $mod_args[$key]
-                    $arg = "$key=$val"
-                    $parsed_args.add($arg)>$null
+                    foreach($key in $mod_args.keys)
+                    {                     
+                        [string]$val = $mod_args[$key]
+                        $arg = "$key=$val"
+                        $parsed_args.add($arg)>$null
+                    }
+
+                    $fpath = $mod
+                    Write-Output "Info: running module $mod"
+                    Write-Output "Params: $parsed_args"
+                    & $PSScriptRoot\modules\$fpath $parsed_args
                 }
-                $fpath = $mod
-                print "Info: running module " -nonewline; print "$mod" -fore darkyellow
-                print "Params: $parsed_args"
-                & $PSScriptRoot\scripts\$fpath $parsed_args
             }
-        }
+            "clear" 
+            {
+                Clear-Host
+            }
+            default {Write-Output "Error: Mode '$($parser.namespace.mode)' not found"}
 
-        elseif($parser.namespace.mode -eq 'clear'){clear-host}
-        else{$m = $parser.namespace.mode; print "Error: Mode '$m' not found"}
+        }
 
     } until ($parser.namespace.mode -eq 'quit')
 }

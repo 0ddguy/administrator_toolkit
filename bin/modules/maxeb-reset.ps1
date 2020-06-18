@@ -59,7 +59,7 @@ function checkBusy()
 }
 
 # Session ID needs to be passed to the URL in order for the login form to be proccesed, even if the cookie value changes upon login
-$session_id = 'E4E738F9841A57BA6F6710C001C77C24?fehc=1'
+$session_id = ''
 
 # # get user credentials, password is passed in as an encrypted string and decrypted only upon authentication
 # write-host "Enter your MaxEB username: " -nonewline

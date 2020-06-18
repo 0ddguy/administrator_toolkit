@@ -108,7 +108,6 @@ function session([string]$target_host, [string]$proj, [string]$extra=$false)
     }
 }
 
-# 276752
 function parse_sub_args([array]$sub_arg_lst)
 {
     [hashtable]$sub_args = new-object hashtable

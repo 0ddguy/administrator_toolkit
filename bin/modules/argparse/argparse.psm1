@@ -18,10 +18,8 @@
 # The first key on the table will always be the mode argument, all following arguments need to be prefixed with a '-' or '--'. Long string arguments 
 # can be separated by " " and multiple values can be separated by commas (1,2,3). Separated values will be assigned as a list to the key and 
 # can be accessed with $parser.namespace['key'][index].
+
 # Contains lists and actions used in ArgumentParser
-
-set-alias -name print -value write-host
-
 class ArgumentContainer
 {
     [System.Collections.ArrayList]$arg_list = @()
@@ -57,9 +55,12 @@ class ArgumentParser : ArgumentContainer
         # initialize pointers and flags
         [int]$p1 = 0
         [int]$p2 = 0
-        [bool]$mf = $false
-        [bool]$vf = $false
-        [bool]$tf = $false
+        [bool]$mf = $false # mode flag
+        [bool]$vf = $false # val flag
+        [bool]$tf = $false # to keyword flag
+
+        # clear tmp folder
+        try{Remove-Item -path "$PSScriptRoot\tmp\*.dat"}catch{}
 
         # iter through argument list
         foreach($v in $this.arg_list)
@@ -67,7 +68,7 @@ class ArgumentParser : ArgumentContainer
             # mode argument will always be at index 0
             if($p1 -eq 0 -and ! $mf)
             {
-                # check if .val is after the first argument
+                # see if .val is after the first argument by incrementing pointer by one and checking for args
                 if($this.arg_list[$p1 + 1] -match $this.RX_OPT_ARG -or $this.arg_list[$p1 + 1] -match $this.RX_OPT_LARG){} # pass
                 else
                 {
@@ -83,7 +84,7 @@ class ArgumentParser : ArgumentContainer
             }
             
             # grab .val value
-            if($this.arg_list[$p1 + 1] -eq $null -and ! $vf)
+            if($null -eq $this.arg_list[$p1 + 1] -and ! $vf)
             {
                 $this.namespace.val = $v
                 $vf = $true
@@ -118,7 +119,7 @@ class ArgumentParser : ArgumentContainer
             {
                 if($this.arg_list[$p1 + 1].startswith('"'))
                 {
-                    do {$p2++} until ($this.arg_list[$p2 + 1] -eq $null)
+                    do {$p2++} until ($null -eq $this.arg_list[$p2 + 1])
                     $p1 += 1
                     $val = $this.arg_list[$p1..$p2].replace('"','')
                     $this.namespace.val = $val
@@ -184,26 +185,21 @@ class ArgumentParser : ArgumentContainer
         }
         
     }
+
+    # Module methods are WIP
     [void] set_module_arg([string]$mod, [string]$key, [string]$val)
     {
-        
-        $fname = $mod + '-args' + '.dat'
-
-        if($fname.startswith("ps-"))
-        {
-            $fname = $fname.replace('.ps1', '')
-        }
-        
-        if( ! (test-path -path "$PSScriptRoot\tmp\$fname"))
+        $fname = ($mod.replace('.ps1','') + '-args' + '.dat')
+ 
+        if( ! (Test-Path -path "$PSScriptRoot\tmp\$fname"))
         {
             try{new-item -path "$PSScriptRoot\tmp" -name "$fname" -itemtype 'file' -force >$null}
-            catch{print "[Error] " -nonewline -fore darkred; print "Unable to create args file, make sure you have access to $PSScriptRoot\tmp"}
+            catch{[Console]::WriteLine("[Error] Unable to create args file, make sure you have access to $PSScriptRoot\tmp")}
         }
     
         $content = $key + '=>' + $val
         try
         {
-
             # gather current args into list
             foreach($line in (get-content -path "$PSScriptRoot\tmp\$fname"))
             {
@@ -213,18 +209,17 @@ class ArgumentParser : ArgumentContainer
 
             if($key -in $this.argkeys)
             {
-                print("triggered")
-                set-content -path "$PSScriptRoot\tmp\$fname" -value (get-content -path "$PSScriptRoot\tmp\$fname" | select-string -pattern "$key" -notmatch >$null)
-                add-content -path "$PSScriptRoot\tmp\$fname" -value $content >$null
+                Set-Content -path "$PSScriptRoot\tmp\$fname" -value (get-content -path "$PSScriptRoot\tmp\$fname" | select-string -pattern "$key" -notmatch >$null)
+                Add-Content -path "$PSScriptRoot\tmp\$fname" -value $content >$null
             }
             else
             {
-                add-content -path "$PSScriptRoot\tmp\$fname" -value $content >$null
+                Add-Content -path "$PSScriptRoot\tmp\$fname" -value $content >$null
             }
     
-            print "Set: $key => $val"
+            [Console]::WriteLine("Set: $key => $val")
         }
-        catch{print "[Error] " -nonewline -fore darkred; print "Unable to set argument, make sure you have access to $PSScriptRoot\tmp"}
+        catch{[Console]::WriteLine("[Error] Unable to set argument, make sure you have access to $PSScriptRoot\tmp")}
     }
     
     [void] unset_module_arg([string]$mod, [string]$key)
@@ -236,18 +231,22 @@ class ArgumentParser : ArgumentContainer
             $fname = $fname.replace('.ps1', '')
         }
 
-        if (test-path -path "$PSScriptRoot\tmp\$fname")
+        if (Test-Path -path "$PSScriptRoot\tmp\$fname")
         {
             try
             {
-                if($key -eq 'all'){print "Unset all for module $mod"; remove-item -path "$PSScriptRoot\tmp\$fname"}
+                if($key -eq 'all')
+                {
+                Write-Output "Unset all for module $mod"
+                Remove-Item -path "$PSScriptRoot\tmp\$fname"
+            }
                 else
                 {
-                    print "Unset: " -nonewline -fore darkyellow; print "$key"
-                    set-content -path "$PSScriptRoot\tmp\$fname" -value (get-content -path "$PSScriptRoot\tmp\$fname" | select-string -pattern "$key" -notmatch)
+                    Write-Output "Unset: $key"
+                    Set-Content -path "$PSScriptRoot\tmp\$fname" -value (get-content -path "$PSScriptRoot\tmp\$fname" | select-string -pattern "$key" -notmatch)
                 }
             }
-            catch{print "[Error] " -nonewline -fore darkred; print "Unable to unset argument"}
+            catch{Write-Error "[Error] Unable to unset argument(s)"}
         }
     }
     # prints options that have been set for a specific module
@@ -260,15 +259,15 @@ class ArgumentParser : ArgumentContainer
                 $fname = $fname.replace('.ps1', '')
             }
 
-            if(test-path -path "$PSScriptRoot\tmp\$fname")
+            if(Test-Path -path "$PSScriptRoot\tmp\$fname")
             {
-                print "Arguments for $mod"
+                Write-Output "Arguments for $mod"
                 foreach($line in get-content -path "$PSScriptRoot\tmp\$fname")
                 {
-                    print "| $line |"
+                    Write-Output "| $line |"
                 }
             }
-            else{print "[Error] " -nonewline -fore darkred; print "Unable to read options, try running 'unset all' and resetting arguments"}
+            else{Write-Output "[Error] Unable to read options, try running 'unset all' and resetting arguments"}
     }
     # get input from user
     [string] get_args() 

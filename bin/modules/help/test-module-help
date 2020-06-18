@@ -1,0 +1,9 @@
+Test-Module Help options
+
+- Arg1 => Description
+- Arg2 => Description
+
+Example execution
+use Test-Module
+set arg1 to hello
+set arg2 to world
